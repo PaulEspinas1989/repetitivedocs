@@ -41,19 +41,34 @@ class VariableDetectionService
                 'status'               => 'draft',
             ]);
 
+            // For PDF: extract text positions so generation can overlay values precisely
+            $pdfTextElements = [];
+            if ($doc->isPdf()) {
+                $pdfTextElements = $this->extractPdfTextElements(
+                    Storage::disk($doc->disk)->path($doc->path)
+                );
+            }
+
             foreach ($variableList as $v) {
+                $exampleValue   = $v['example_value'] ?? null;
+                $textPositions  = null;
+                if ($doc->isPdf() && !empty($exampleValue) && !empty($pdfTextElements)) {
+                    $textPositions = $this->findTextPositions($pdfTextElements, $exampleValue);
+                }
+
                 TemplateVariable::create([
-                    'template_id'     => $template->id,
-                    'workspace_id'    => $doc->workspace_id,
-                    'name'            => Str::snake($v['name'] ?? Str::random(8)),
-                    'label'           => $v['label'] ?? $v['name'] ?? 'Unknown',
-                    'type'            => $v['type'] ?? 'text',
-                    'description'     => $v['description'] ?? null,
-                    'example_value'   => $v['example_value'] ?? null,
-                    'is_required'     => $v['is_required'] ?? true,
-                    'sort_order'      => $v['sort_order'] ?? 0,
+                    'template_id'    => $template->id,
+                    'workspace_id'   => $doc->workspace_id,
+                    'name'           => Str::snake($v['name'] ?? Str::random(8)),
+                    'label'          => $v['label'] ?? $v['name'] ?? 'Unknown',
+                    'type'           => $v['type'] ?? 'text',
+                    'description'    => $v['description'] ?? null,
+                    'example_value'  => $exampleValue,
+                    'is_required'    => $v['is_required'] ?? true,
+                    'sort_order'     => $v['sort_order'] ?? 0,
                     'approval_status' => 'pending',
-                    'ai_suggested'    => true,
+                    'ai_suggested'   => true,
+                    'text_positions' => $textPositions,
                 ]);
             }
 
@@ -115,6 +130,130 @@ class VariableDetectionService
         }
 
         return $data;
+    }
+
+    private function extractPdfTextElements(string $pdfPath): array
+    {
+        if (!file_exists($pdfPath)) {
+            return [];
+        }
+
+        $base    = sys_get_temp_dir() . '/rdoc_pdfxml_' . uniqid();
+        $xmlFile = $base . '.xml';
+
+        exec('pdftohtml -xml ' . escapeshellarg($pdfPath) . ' ' . escapeshellarg($base) . ' 2>/dev/null', $out, $code);
+
+        if (!file_exists($xmlFile)) {
+            return [];
+        }
+
+        libxml_use_internal_errors(true);
+        $xml = simplexml_load_file($xmlFile);
+        @unlink($xmlFile);
+
+        if (!$xml) {
+            return [];
+        }
+
+        $elements  = [];
+        $fontSpecs = [];
+
+        foreach ($xml->page as $page) {
+            $pageNum    = (int) $page['number'];
+            $pageWidth  = (float) ($page['width']  ?: 595);
+            $pageHeight = (float) ($page['height'] ?: 842);
+
+            foreach ($page->fontspec as $fs) {
+                $fontSpecs[(string) $fs['id']] = [
+                    'size'  => (float) $fs['size'],
+                    'color' => (string) $fs['color'],
+                ];
+            }
+
+            foreach ($page->text as $text) {
+                $fontId = (string) $text['font'];
+                $font   = $fontSpecs[$fontId] ?? ['size' => 10, 'color' => '#000000'];
+
+                $elements[] = [
+                    'page'        => $pageNum,
+                    'top'         => (float) $text['top'],
+                    'left'        => (float) $text['left'],
+                    'width'       => (float) $text['width'],
+                    'height'      => (float) $text['height'],
+                    'page_width'  => $pageWidth,
+                    'page_height' => $pageHeight,
+                    'font_size'   => $font['size'],
+                    'font_color'  => $font['color'],
+                    'text'        => trim((string) $text),
+                ];
+            }
+        }
+
+        return $elements;
+    }
+
+    private function findTextPositions(array $elements, string $search): ?array
+    {
+        $search = trim($search);
+        if (empty($search)) {
+            return null;
+        }
+
+        $positions = [];
+
+        // Group elements by page and approximate line (top ± 3px)
+        $pages = [];
+        foreach ($elements as $el) {
+            $pages[$el['page']][] = $el;
+        }
+
+        foreach ($pages as $pageNum => $pageElements) {
+            // Sort by top then left
+            usort($pageElements, fn($a, $b) => $a['top'] <=> $b['top'] ?: $a['left'] <=> $b['left']);
+
+            // Build lines by grouping elements with similar top values
+            $lines = [];
+            foreach ($pageElements as $el) {
+                $matched = false;
+                foreach ($lines as &$line) {
+                    if (abs($el['top'] - $line[0]['top']) <= 3) {
+                        $line[] = $el;
+                        $matched = true;
+                        break;
+                    }
+                }
+                if (!$matched) {
+                    $lines[] = [$el];
+                }
+            }
+
+            foreach ($lines as $line) {
+                usort($line, fn($a, $b) => $a['left'] <=> $b['left']);
+                $lineText = implode('', array_column($line, 'text'));
+
+                if (stripos($lineText, $search) !== false) {
+                    $left   = min(array_column($line, 'left'));
+                    $right  = max(array_map(fn($e) => $e['left'] + $e['width'], $line));
+                    $top    = min(array_column($line, 'top'));
+                    $bottom = max(array_map(fn($e) => $e['top'] + $e['height'], $line));
+
+                    $pw = $line[0]['page_width'];
+                    $ph = $line[0]['page_height'];
+
+                    $positions[] = [
+                        'page'        => $pageNum,
+                        'x_pct'       => $left / $pw,
+                        'y_pct'       => $top  / $ph,
+                        'w_pct'       => ($right - $left) / $pw,
+                        'h_pct'       => ($bottom - $top) / $ph,
+                        'font_size'   => $line[0]['font_size'],
+                        'font_color'  => $line[0]['font_color'],
+                    ];
+                }
+            }
+        }
+
+        return !empty($positions) ? $positions : null;
     }
 
     private function extractPdfText(string $pdfPath): string

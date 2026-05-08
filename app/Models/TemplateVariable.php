@@ -11,13 +11,15 @@ class TemplateVariable extends Model
         'template_id', 'workspace_id', 'name', 'label', 'type',
         'description', 'example_value', 'default_value', 'options',
         'is_required', 'sort_order', 'approval_status', 'ai_suggested',
+        'text_positions',
     ];
 
     protected $casts = [
-        'options'      => 'array',
-        'is_required'  => 'boolean',
-        'ai_suggested' => 'boolean',
-        'sort_order'   => 'integer',
+        'options'        => 'array',
+        'is_required'    => 'boolean',
+        'ai_suggested'   => 'boolean',
+        'sort_order'     => 'integer',
+        'text_positions' => 'array',
     ];
 
     public function template(): BelongsTo

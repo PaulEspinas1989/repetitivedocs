@@ -25,7 +25,12 @@ class DocumentGenerationService
             return $this->generateFromDocx($template, $doc, $values);
         }
 
-        // For PDF / fallback: build a structured HTML and convert to PDF
+        // For PDF: use image-based overlay to preserve exact formatting
+        if ($doc && $doc->isPdf()) {
+            return $this->generateFromPdfOverlay($template, $doc, $values);
+        }
+
+        // Fallback: build a structured HTML and convert to PDF
         return $this->generateFromHtml($template, $values);
     }
 
@@ -121,6 +126,97 @@ class DocumentGenerationService
             'disk'            => 'documents',
             'status'          => 'ready',
         ]);
+    }
+
+    // ── PDF overlay generation (preserves original PDF formatting) ───
+
+    private function generateFromPdfOverlay(Template $template, $doc, array $values): GeneratedDocument
+    {
+        $pdfPath   = Storage::disk($doc->disk)->path($doc->path);
+        $tmpDir    = sys_get_temp_dir() . '/rdoc_gen_' . uniqid();
+        mkdir($tmpDir, 0777, true);
+
+        try {
+            // Render PDF pages to images at 150 DPI
+            exec('pdftoppm -r 150 -png ' . escapeshellarg($pdfPath) . ' ' . escapeshellarg($tmpDir . '/page') . ' 2>/dev/null');
+
+            // Get page count
+            $images = glob($tmpDir . '/page-*.png') ?: glob($tmpDir . '/page*.png') ?: [];
+            natsort($images);
+            $images = array_values($images);
+
+            if (empty($images)) {
+                // Fallback if pdftoppm fails
+                return $this->generateFromHtml($template, $values);
+            }
+
+            $pdf = new \FPDF('P', 'mm', 'A4');
+            $pdf->SetAutoPageBreak(false);
+            $pdf->SetMargins(0, 0, 0);
+
+            foreach ($images as $idx => $imgPath) {
+                $pageNum = $idx + 1;
+                $pdf->AddPage();
+
+                // Place the original page as a full-page image background
+                $pdf->Image($imgPath, 0, 0, 210, 297);
+
+                // Overlay each variable value
+                foreach ($template->approvedVariables as $var) {
+                    $newValue  = $values[$var->name] ?? '';
+                    $positions = $var->text_positions;
+
+                    if (empty($newValue) || empty($positions)) {
+                        continue;
+                    }
+
+                    foreach ($positions as $pos) {
+                        if ((int) $pos['page'] !== $pageNum) {
+                            continue;
+                        }
+
+                        // Convert percentage-based coords to mm on A4 (210×297)
+                        $x = (float) $pos['x_pct'] * 210;
+                        $y = (float) $pos['y_pct'] * 297;
+                        $w = max((float) $pos['w_pct'] * 210, 10);
+                        $h = max((float) $pos['h_pct'] * 297, 4);
+
+                        // White rectangle to erase old value
+                        $pdf->SetFillColor(255, 255, 255);
+                        $pdf->Rect($x, $y, $w + 2, $h + 1, 'F');
+
+                        // Write new value at same position
+                        $fontSize = max((float) ($pos['font_size'] ?? 10), 6);
+                        $pdf->SetFont('Helvetica', '', $fontSize);
+                        $pdf->SetTextColor(0, 0, 0);
+                        $pdf->SetXY($x, $y);
+                        $pdf->Cell($w + 2, $h + 1, $newValue, 0, 0, 'L');
+                    }
+                }
+            }
+
+            $pdfBytes = $pdf->Output('S');
+            $fileName = Str::slug($template->name) . '-' . now()->format('Ymd-His') . '.pdf';
+            $path     = 'workspaces/' . $template->workspace_id . '/generated/' . $fileName;
+            Storage::disk('documents')->put($path, $pdfBytes);
+
+            return GeneratedDocument::create([
+                'workspace_id'    => $template->workspace_id,
+                'user_id'         => auth()->id(),
+                'template_id'     => $template->id,
+                'variable_values' => $values,
+                'file_path'       => $path,
+                'file_name'       => $fileName,
+                'disk'            => 'documents',
+                'status'          => 'ready',
+            ]);
+        } finally {
+            // Clean up temp images
+            foreach (glob($tmpDir . '/*') ?: [] as $f) {
+                @unlink($f);
+            }
+            @rmdir($tmpDir);
+        }
     }
 
     // ── HTML/PDF generation (PDF uploads or fallback) ─────────────────
