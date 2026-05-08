@@ -760,29 +760,6 @@ SIGNATORIES: example_value = clean name only. prefix_text = "HON." or "Mayor". c
 
 Use snake_case names. sort_order = reading order. Return ONLY the JSON.
 PROMPT;
-
-SIGNATORY/MAYOR DETECTION — MANDATORY:
-For any name in a signature/approval block:
-- source_area = "signature_block"
-- semantic_context = "signature_block"
-- entity_role = "mayor_signatory" for mayor/LCE names
-- example_value = CLEAN NAME ONLY (no "HON.", "Mayor", etc.)
-- prefix_text = "HON." or "Mayor" or similar (separate from clean name)
-- recommended_replacement_strategy = "replace_value_preserve_prefix"
-
-CASING RULES:
-- If original is "JUAN DELA CRUZ" (all caps): casing_pattern = "uppercase"
-- If original is "Juan Dela Cruz": casing_pattern = "titlecase"
-- If original has mixed casing: casing_pattern = "mixed"
-
-NEEDS REVIEW CANDIDATES:
-If you find text that MIGHT be editable but you're not certain, add it to needs_review_candidates.
-Include: possible position titles, unclear abbreviations, text that looks like a value but context is ambiguous.
-Do NOT omit uncertain candidates — surface them for human review.
-
-Use snake_case for variable names. sort_order = top-to-bottom reading order.
-Return ONLY the JSON object — no explanation, no markdown fences.
-PROMPT;
     }
 
     private function parseResponse(array $response): array
