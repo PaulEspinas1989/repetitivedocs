@@ -59,7 +59,7 @@
         {{-- Field info --}}
         <div class="mb-4">
             <h4 class="font-semibold text-navy text-base leading-tight">{{ $var->label }}</h4>
-            <p class="text-xs text-muted font-mono mt-0.5">{{ '{{'  }} {{ $var->name }} {{ '}}' }}</p>
+            <p class="text-xs text-muted font-mono mt-0.5">&#123;&#123; {{ $var->name }} &#125;&#125;</p>
             @if($var->example_value)
             <p class="text-sm text-slate mt-1.5">
                 e.g. <span class="font-medium text-navy">{{ Str::limit($var->example_value, 80) }}</span>
