@@ -254,22 +254,23 @@ class VariableDetectionService
                     $top    = min(array_column($line, 'top'));
                     $bottom = max(array_map(fn($e) => $e['top'] + $e['height'], $line));
                 } else {
-                    // Find the sub-elements that make up the matching portion
-                    $matchLeft = PHP_INT_MAX;
-                    $matchRight = 0;
+                    // Narrow the bounding box to just the matching portion of the line
+                    $matchLeft  = PHP_INT_MAX;
+                    $matchRight = PHP_INT_MIN;
                     $runningText = '';
                     $matchStart = stripos($normalizedLine, $normalizedSearch);
+                    $matchEnd   = $matchStart + strlen($normalizedSearch);
                     foreach ($line as $el) {
                         $elStart = strlen($runningText);
                         $elEnd   = $elStart + strlen($el['text']);
-                        if ($elEnd > $matchStart && $elStart < $matchStart + strlen($normalizedSearch)) {
+                        if ($elEnd > $matchStart && $elStart < $matchEnd) {
                             $matchLeft  = min($matchLeft, $el['left']);
                             $matchRight = max($matchRight, $el['left'] + $el['width']);
                         }
                         $runningText .= $el['text'];
                     }
-                    $left   = $matchLeft === PHP_INT_MAX ? min(array_column($line, 'left')) : $matchLeft;
-                    $right  = $matchRight ?: max(array_map(fn($e) => $e['left'] + $e['width'], $line));
+                    $left   = $matchLeft  !== PHP_INT_MAX ? $matchLeft  : min(array_column($line, 'left'));
+                    $right  = $matchRight !== PHP_INT_MIN ? $matchRight : max(array_map(fn($e) => $e['left'] + $e['width'], $line));
                     $top    = min(array_column($line, 'top'));
                     $bottom = max(array_map(fn($e) => $e['top'] + $e['height'], $line));
                 }
@@ -470,6 +471,7 @@ Rules:
 - Use snake_case for all names (e.g., client_name, invoice_date)
 - Keep labels concise (2–4 words)
 - sort_order must reflect document order (top to bottom)
+- example_value MUST be the COMPLETE, EXACT text string as it appears in the document — never just a number like "4" or "2" alone; include surrounding context if needed (e.g., "4 Modules" not "4", "Municipality of Perez, Quezon" not "Perez")
 - Return ONLY the JSON object — nothing else
 PROMPT;
     }

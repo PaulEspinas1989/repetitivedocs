@@ -132,25 +132,27 @@ class DocumentGenerationService
 
     private function generateFromPdfOverlay(Template $template, $doc, array $values): GeneratedDocument
     {
-        $pdfPath   = Storage::disk($doc->disk)->path($doc->path);
-        $tmpDir    = sys_get_temp_dir() . '/rdoc_gen_' . uniqid();
+        $pdfPath = Storage::disk($doc->disk)->path($doc->path);
+        $tmpDir  = sys_get_temp_dir() . '/rdoc_gen_' . uniqid();
         mkdir($tmpDir, 0777, true);
 
         try {
-            // Render PDF pages to images at 150 DPI
             exec('pdftoppm -r 150 -png ' . escapeshellarg($pdfPath) . ' ' . escapeshellarg($tmpDir . '/page') . ' 2>/dev/null');
 
-            // Get page count
             $images = glob($tmpDir . '/page-*.png') ?: glob($tmpDir . '/page*.png') ?: [];
             natsort($images);
             $images = array_values($images);
 
             if (empty($images)) {
-                // Fallback if pdftoppm fails
                 return $this->generateFromHtml($template, $values);
             }
 
-            $pdf = new \FPDF('P', 'mm', 'A4');
+            // Detect actual page size from the first image (at 150 DPI)
+            [$imgPxW, $imgPxH] = getimagesize($images[0]);
+            $pageMmW = $imgPxW * 25.4 / 150;
+            $pageMmH = $imgPxH * 25.4 / 150;
+
+            $pdf = new \FPDF('P', 'mm', [$pageMmW, $pageMmH]);
             $pdf->SetAutoPageBreak(false);
             $pdf->SetMargins(0, 0, 0);
 
@@ -158,10 +160,9 @@ class DocumentGenerationService
                 $pageNum = $idx + 1;
                 $pdf->AddPage();
 
-                // Place the original page as a full-page image background
-                $pdf->Image($imgPath, 0, 0, 210, 297);
+                // Place the original page as pixel-perfect background
+                $pdf->Image($imgPath, 0, 0, $pageMmW, $pageMmH);
 
-                // Overlay each variable value
                 foreach ($template->approvedVariables as $var) {
                     $newValue  = $values[$var->name] ?? '';
                     $positions = $var->text_positions;
@@ -175,22 +176,35 @@ class DocumentGenerationService
                             continue;
                         }
 
-                        // Convert percentage-based coords to mm on A4 (210×297)
-                        $x = (float) $pos['x_pct'] * 210;
-                        $y = (float) $pos['y_pct'] * 297;
-                        $w = max((float) $pos['w_pct'] * 210, 10);
-                        $h = max((float) $pos['h_pct'] * 297, 4);
+                        // Map percentage coords to actual page mm dimensions
+                        $x = (float) $pos['x_pct'] * $pageMmW;
+                        $y = (float) $pos['y_pct'] * $pageMmH;
+                        $w = max((float) $pos['w_pct'] * $pageMmW, 8);
+                        $h = max((float) $pos['h_pct'] * $pageMmH, 3);
 
-                        // White rectangle sized precisely to the original text block
+                        // Erase old text with white rectangle
                         $pdf->SetFillColor(255, 255, 255);
                         $pdf->Rect($x, $y, $w, $h, 'F');
 
-                        // Write new value at same position with same font size
+                        // Resolve font color from position data
+                        $hexColor = ltrim($pos['font_color'] ?? '#000000', '#');
+                        if (strlen($hexColor) === 6) {
+                            $pdf->SetTextColor(
+                                hexdec(substr($hexColor, 0, 2)),
+                                hexdec(substr($hexColor, 2, 2)),
+                                hexdec(substr($hexColor, 4, 2))
+                            );
+                        } else {
+                            $pdf->SetTextColor(0, 0, 0);
+                        }
+
                         $fontSize = max((float) ($pos['font_size'] ?? 10), 6);
                         $pdf->SetFont('Helvetica', '', $fontSize);
-                        $pdf->SetTextColor(0, 0, 0);
                         $pdf->SetXY($x, $y);
-                        $pdf->Cell($w, $h, $newValue, 0, 0, 'L');
+
+                        // FPDF requires ISO-8859-1; convert UTF-8 input safely
+                        $display = @iconv('UTF-8', 'ISO-8859-1//TRANSLIT', $newValue) ?: $newValue;
+                        $pdf->Cell($w, $h, $display, 0, 0, 'L');
                     }
                 }
             }
@@ -211,7 +225,6 @@ class DocumentGenerationService
                 'status'          => 'ready',
             ]);
         } finally {
-            // Clean up temp images
             foreach (glob($tmpDir . '/*') ?: [] as $f) {
                 @unlink($f);
             }
