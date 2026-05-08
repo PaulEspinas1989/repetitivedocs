@@ -96,13 +96,13 @@ class VariableDetectionService
                         ],
                         [
                             'type' => 'text',
-                            'text' => $this->buildPrompt($doc->template_name),
+                            'text' => $this->buildPrompt($doc->template_name, skipDocumentText: true),
                         ],
                     ],
                 ],
             ],
             model:       $this->ai->fastModel(),
-            maxTokens:   2048,
+            maxTokens:   4096,
             betaHeaders: ['pdfs-2024-09-25'],
         );
 
@@ -126,7 +126,7 @@ class VariableDetectionService
                 ],
             ],
             model:     $this->ai->fastModel(),
-            maxTokens: 2048,
+            maxTokens: 4096,
         );
 
         return $this->parseResponse($response);
@@ -214,19 +214,27 @@ class VariableDetectionService
         return trim($text);
     }
 
-    private function buildPrompt(string $templateName): string
+    private function buildPrompt(string $templateName, bool $skipDocumentText = false): string
     {
+        $docTextInstruction = $skipDocumentText
+            ? ''
+            : "1. Extract the full readable text of the document\n";
+
+        $docTextField = $skipDocumentText
+            ? ''
+            : "  \"document_text\": \"The complete plain text of the document, preserving paragraph breaks with newline characters. Keep all original text exactly as written.\",\n";
+
+        $taskNumber = $skipDocumentText ? '1' : '2';
+
         return <<<PROMPT
 You are an AI document analyzer for a document automation platform called RepetitiveDocs.
 
 The user uploaded a document called "{$templateName}". Your task is to:
-1. Extract the full readable text of the document
-2. Identify all fields that CHANGE from one document to the next
+{$docTextInstruction}{$taskNumber}. Identify all fields that CHANGE from one document to the next
 
 Return ONLY a valid JSON object with this exact structure (no markdown, no explanation):
 {
-  "document_text": "The complete plain text of the document, preserving paragraph breaks with newline characters. Keep all original text exactly as written.",
-  "variables": [
+{$docTextField}  "variables": [
     {
       "name": "snake_case_name",
       "label": "Human Readable Label",
