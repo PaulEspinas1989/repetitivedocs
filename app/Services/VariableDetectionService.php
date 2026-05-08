@@ -143,28 +143,33 @@ class VariableDetectionService
 
         exec('pdftohtml -xml ' . escapeshellarg($pdfPath) . ' ' . escapeshellarg($base) . ' 2>/dev/null', $out, $code);
 
+        // pdftohtml may generate extra HTML/image files alongside the XML — clean them all up
+        $cleanup = glob($base . '*') ?: [];
+
         if (!file_exists($xmlFile)) {
+            foreach ($cleanup as $f) { @unlink($f); }
             return [];
         }
 
         libxml_use_internal_errors(true);
         $xml = simplexml_load_file($xmlFile);
-        @unlink($xmlFile);
+        foreach ($cleanup as $f) { @unlink($f); }
 
         if (!$xml) {
             return [];
         }
 
-        $elements  = [];
-        $fontSpecs = [];
+        $elements = [];
 
         foreach ($xml->page as $page) {
             $pageNum    = (int) $page['number'];
             $pageWidth  = (float) ($page['width']  ?: 595);
             $pageHeight = (float) ($page['height'] ?: 842);
 
+            // Scope fontspecs per page — pdftohtml may reuse IDs across pages
+            $pageFonts = [];
             foreach ($page->fontspec as $fs) {
-                $fontSpecs[(string) $fs['id']] = [
+                $pageFonts[(string) $fs['id']] = [
                     'size'  => (float) $fs['size'],
                     'color' => (string) $fs['color'],
                 ];
@@ -172,7 +177,7 @@ class VariableDetectionService
 
             foreach ($page->text as $text) {
                 $fontId = (string) $text['font'];
-                $font   = $fontSpecs[$fontId] ?? ['size' => 10, 'color' => '#000000'];
+                $font   = $pageFonts[$fontId] ?? ['size' => 10, 'color' => '#000000'];
 
                 $elements[] = [
                     'page'        => $pageNum,
@@ -231,14 +236,14 @@ class VariableDetectionService
                 usort($line, fn($a, $b) => $a['left'] <=> $b['left']);
                 $lineText = trim(implode('', array_column($line, 'text')));
 
-                // Require a strong match: the search value must be most of the line
-                // or the line must be contained within the search value
+                // Normalize both sides for matching (collapse whitespace, case-insensitive)
                 $normalizedLine   = preg_replace('/\s+/', ' ', $lineText);
                 $normalizedSearch = preg_replace('/\s+/', ' ', $search);
 
-                $isExactMatch    = strcasecmp($normalizedLine, $normalizedSearch) === 0;
-                $isContainedIn   = stripos($normalizedLine, $normalizedSearch) !== false
-                                   && (strlen($normalizedSearch) / max(strlen($normalizedLine), 1)) >= 0.6;
+                $isExactMatch  = mb_strtolower($normalizedLine) === mb_strtolower($normalizedSearch);
+                $containsPos   = mb_stripos($normalizedLine, $normalizedSearch);
+                $isContainedIn = $containsPos !== false
+                                 && (mb_strlen($normalizedSearch) / max(mb_strlen($normalizedLine), 1)) >= 0.6;
 
                 if (!$isExactMatch && !$isContainedIn) {
                     continue;
@@ -247,27 +252,32 @@ class VariableDetectionService
                 $pw = $line[0]['page_width'];
                 $ph = $line[0]['page_height'];
 
-                // Calculate the bounding box of just the matching portion
                 if ($isExactMatch) {
                     $left   = min(array_column($line, 'left'));
                     $right  = max(array_map(fn($e) => $e['left'] + $e['width'], $line));
                     $top    = min(array_column($line, 'top'));
                     $bottom = max(array_map(fn($e) => $e['top'] + $e['height'], $line));
                 } else {
-                    // Narrow the bounding box to just the matching portion of the line
-                    $matchLeft  = PHP_INT_MAX;
-                    $matchRight = PHP_INT_MIN;
-                    $runningText = '';
-                    $matchStart = stripos($normalizedLine, $normalizedSearch);
-                    $matchEnd   = $matchStart + strlen($normalizedSearch);
+                    // Narrow bounding box to the matching sub-portion.
+                    // Use $lineText (not normalizedLine) for element offset tracking
+                    // so char positions stay consistent with $runningText accumulation.
+                    $matchStart  = mb_stripos($lineText, $search);
+                    if ($matchStart === false) {
+                        // Fall back to normalised search in normalised line
+                        $matchStart = $containsPos;
+                    }
+                    $matchEnd    = $matchStart + mb_strlen($search);
+                    $matchLeft   = PHP_INT_MAX;
+                    $matchRight  = PHP_INT_MIN;
+                    $runningLen  = 0;
                     foreach ($line as $el) {
-                        $elStart = strlen($runningText);
-                        $elEnd   = $elStart + strlen($el['text']);
+                        $elStart = $runningLen;
+                        $elEnd   = $elStart + mb_strlen($el['text']);
                         if ($elEnd > $matchStart && $elStart < $matchEnd) {
-                            $matchLeft  = min($matchLeft, $el['left']);
+                            $matchLeft  = min($matchLeft,  $el['left']);
                             $matchRight = max($matchRight, $el['left'] + $el['width']);
                         }
-                        $runningText .= $el['text'];
+                        $runningLen += mb_strlen($el['text']);
                     }
                     $left   = $matchLeft  !== PHP_INT_MAX ? $matchLeft  : min(array_column($line, 'left'));
                     $right  = $matchRight !== PHP_INT_MIN ? $matchRight : max(array_map(fn($e) => $e['left'] + $e['width'], $line));

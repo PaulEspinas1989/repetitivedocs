@@ -147,18 +147,31 @@ class DocumentGenerationService
                 return $this->generateFromHtml($template, $values);
             }
 
-            // Detect actual page size from the first image (at 150 DPI)
-            [$imgPxW, $imgPxH] = getimagesize($images[0]);
-            $pageMmW = $imgPxW * 25.4 / 150;
-            $pageMmH = $imgPxH * 25.4 / 150;
+            // Detect initial page size from first image to initialise FPDF
+            $firstSize = getimagesize($images[0]);
+            if (!$firstSize) {
+                return $this->generateFromHtml($template, $values);
+            }
+            $initMmW = $firstSize[0] * 25.4 / 150;
+            $initMmH = $firstSize[1] * 25.4 / 150;
 
-            $pdf = new \FPDF('P', 'mm', [$pageMmW, $pageMmH]);
+            $pdf = new \FPDF('P', 'mm', [$initMmW, $initMmH]);
             $pdf->SetAutoPageBreak(false);
             $pdf->SetMargins(0, 0, 0);
 
             foreach ($images as $idx => $imgPath) {
                 $pageNum = $idx + 1;
-                $pdf->AddPage();
+
+                // Detect this page's actual dimensions (handles mixed-size PDFs)
+                $size = getimagesize($imgPath);
+                if (!$size) {
+                    continue;
+                }
+                $pageMmW = $size[0] * 25.4 / 150;
+                $pageMmH = $size[1] * 25.4 / 150;
+
+                // AddPage with per-page size so FPDF uses the correct canvas
+                $pdf->AddPage('P', [$pageMmW, $pageMmH]);
 
                 // Place the original page as pixel-perfect background
                 $pdf->Image($imgPath, 0, 0, $pageMmW, $pageMmH);
@@ -176,7 +189,7 @@ class DocumentGenerationService
                             continue;
                         }
 
-                        // Map percentage coords to actual page mm dimensions
+                        // Map percentage coords to this page's actual mm dimensions
                         $x = (float) $pos['x_pct'] * $pageMmW;
                         $y = (float) $pos['y_pct'] * $pageMmH;
                         $w = max((float) $pos['w_pct'] * $pageMmW, 8);
