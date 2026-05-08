@@ -45,6 +45,11 @@ class DocumentAnalysisController extends Controller
                 'redirect'    => route('automation-map', $template->id),
             ]);
         } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('DocumentAnalysis failed', [
+                'document_id' => $document->id,
+                'error'       => $e->getMessage(),
+                'trace'       => $e->getTraceAsString(),
+            ]);
             return response()->json([
                 'error'   => true,
                 'message' => 'Analysis failed: ' . $e->getMessage(),
