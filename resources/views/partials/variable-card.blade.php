@@ -190,74 +190,72 @@
         </div>
 
         {{-- Action buttons — inline, no form POST, no page reload --}}
-        <div class="flex gap-2" aria-label="Variable actions">
+        {{--
+            x-show instead of x-if for all state panels — avoids DOM destruction on state change,
+            which would lose focus and cause screen-reader confusion. All panels are in the DOM;
+            only their visibility changes.
+        --}}
+        <div class="flex gap-2 min-h-[2.75rem]" aria-label="Variable actions" role="group">
 
-            {{-- Loading overlay shown during any action --}}
-            <template x-if="loading">
-                <div class="flex items-center gap-2 text-xs text-muted py-2.5 px-3 bg-blue-soft rounded-xl flex-1">
-                    <x-spinner size="sm" />
-                    <span x-text="loading === 'approving'
-                        ? 'Adding this field…'
-                        : (loading === 'rejecting'
-                            ? 'Ignoring this suggestion…'
-                            : 'Updating…')"></span>
-                </div>
-            </template>
+            {{-- Loading state (x-show keeps DOM stable, aria-live announces to screen readers) --}}
+            <div x-show="loading" x-cloak
+                 class="flex items-center gap-2 text-xs text-muted py-2.5 px-3 bg-blue-soft rounded-xl flex-1"
+                 role="status" aria-live="polite" aria-atomic="true">
+                <x-spinner size="sm" />
+                <span x-text="loading === 'approving'
+                    ? 'Adding this field…'
+                    : (loading === 'rejecting'
+                        ? 'Ignoring this suggestion…'
+                        : 'Updating…')"></span>
+            </div>
 
-            {{-- ── PENDING state actions ──────────────────────────────────── --}}
-            <template x-if="!loading && status === 'pending'">
-                <div class="flex gap-2 flex-1">
-                    <button @click="approve()"
-                            class="flex-1 flex items-center justify-center gap-1.5 bg-success text-white py-2.5 rounded-xl text-sm font-medium hover:bg-green-600 transition-colors"
-                            aria-label="Approve {{ $var->label }}">
-                        <x-icon name="check-circle" class="w-4 h-4" />
-                        Approve
-                    </button>
-                    <button @click="reject()"
-                            class="flex-1 flex items-center justify-center gap-1.5 bg-danger/10 text-danger py-2.5 rounded-xl text-sm font-medium hover:bg-danger/20 transition-colors"
-                            aria-label="Reject {{ $var->label }}">
-                        <x-icon name="x" class="w-4 h-4" />
-                        Reject
-                    </button>
-                </div>
-            </template>
+            {{-- PENDING actions --}}
+            <div x-show="!loading && status === 'pending'" class="flex gap-2 flex-1">
+                <button @click="approve()"
+                        class="flex-1 flex items-center justify-center gap-1.5 bg-success text-white py-2.5 rounded-xl text-sm font-medium hover:bg-green-600 transition-colors"
+                        aria-label="Approve {{ $var->label }}">
+                    <x-icon name="check-circle" class="w-4 h-4" aria-hidden="true" />
+                    Approve
+                </button>
+                <button @click="reject()"
+                        class="flex-1 flex items-center justify-center gap-1.5 bg-danger/10 text-danger py-2.5 rounded-xl text-sm font-medium hover:bg-danger/20 transition-colors"
+                        aria-label="Reject {{ $var->label }}">
+                    <x-icon name="x" class="w-4 h-4" aria-hidden="true" />
+                    Reject
+                </button>
+            </div>
 
-            {{-- ── APPROVED state actions ─────────────────────────────────── --}}
-            <template x-if="!loading && status === 'approved'">
-                <div class="flex gap-2 flex-1">
-                    {{-- Undo --}}
-                    <button @click="undo()"
-                            class="flex-1 flex items-center justify-center gap-1.5 bg-blue-soft text-slate py-2.5 rounded-xl text-sm font-medium hover:bg-blue-light transition-colors"
-                            aria-label="Undo approval of {{ $var->label }}">
-                        <x-icon name="arrow-left" class="w-4 h-4" />
-                        Undo
-                    </button>
-                    <button @click="reject()"
-                            class="flex-1 flex items-center justify-center gap-1.5 bg-danger/10 text-danger py-2.5 rounded-xl text-sm font-medium hover:bg-danger/20 transition-colors"
-                            aria-label="Reject {{ $var->label }}">
-                        <x-icon name="x" class="w-4 h-4" />
-                        Reject
-                    </button>
-                </div>
-            </template>
+            {{-- APPROVED actions (inline Undo for no-scroll-jump) --}}
+            <div x-show="!loading && status === 'approved'" class="flex gap-2 flex-1">
+                <button @click="undo()"
+                        class="flex-1 flex items-center justify-center gap-1.5 bg-blue-soft text-slate py-2.5 rounded-xl text-sm font-medium hover:bg-blue-light transition-colors"
+                        aria-label="Undo approval of {{ $var->label }}">
+                    <x-icon name="arrow-left" class="w-4 h-4" aria-hidden="true" />
+                    Undo
+                </button>
+                <button @click="reject()"
+                        class="flex-1 flex items-center justify-center gap-1.5 bg-danger/10 text-danger py-2.5 rounded-xl text-sm font-medium hover:bg-danger/20 transition-colors"
+                        aria-label="Reject {{ $var->label }}">
+                    <x-icon name="x" class="w-4 h-4" aria-hidden="true" />
+                    Reject
+                </button>
+            </div>
 
-            {{-- ── REJECTED state actions ─────────────────────────────────── --}}
-            <template x-if="!loading && status === 'rejected'">
-                <div class="flex gap-2 flex-1">
-                    <button @click="approve()"
-                            class="flex-1 flex items-center justify-center gap-1.5 bg-success text-white py-2.5 rounded-xl text-sm font-medium hover:bg-green-600 transition-colors"
-                            aria-label="Approve {{ $var->label }}">
-                        <x-icon name="check-circle" class="w-4 h-4" />
-                        Approve
-                    </button>
-                    <button @click="undo()"
-                            class="flex-1 flex items-center justify-center gap-1.5 bg-blue-soft text-slate py-2.5 rounded-xl text-sm font-medium hover:bg-blue-light transition-colors"
-                            aria-label="Undo rejection of {{ $var->label }}">
-                        <x-icon name="arrow-left" class="w-4 h-4" />
-                        Undo
-                    </button>
-                </div>
-            </template>
+            {{-- REJECTED actions --}}
+            <div x-show="!loading && status === 'rejected'" class="flex gap-2 flex-1">
+                <button @click="approve()"
+                        class="flex-1 flex items-center justify-center gap-1.5 bg-success text-white py-2.5 rounded-xl text-sm font-medium hover:bg-green-600 transition-colors"
+                        aria-label="Approve {{ $var->label }}">
+                    <x-icon name="check-circle" class="w-4 h-4" aria-hidden="true" />
+                    Approve
+                </button>
+                <button @click="undo()"
+                        class="flex-1 flex items-center justify-center gap-1.5 bg-blue-soft text-slate py-2.5 rounded-xl text-sm font-medium hover:bg-blue-light transition-colors"
+                        aria-label="Undo rejection of {{ $var->label }}">
+                    <x-icon name="arrow-left" class="w-4 h-4" aria-hidden="true" />
+                    Undo
+                </button>
+            </div>
 
         </div>
     </div>

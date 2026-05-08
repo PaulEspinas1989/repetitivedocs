@@ -118,6 +118,69 @@ Never trust frontend for plan enforcement. Always validate server-side.
 
 ---
 
+## OPTIMIZE — System Optimization Rule
+
+**This is a permanent optimization gate for RepetitiveDocs.com.**
+
+### When the user says `OPTIMIZE`, immediately execute the full System Optimization Sweep.
+
+Do not ask what to optimize. Do not ask for clarification unless it is genuinely impossible to infer.
+
+Assume `OPTIMIZE` means:
+> Inspect, measure, improve, simplify, speed up, reduce waste, reduce cost, improve reliability, improve maintainability, and verify the most recently deployed or implemented change and everything it affects.
+
+### What OPTIMIZE must do (non-negotiable):
+
+1. **Inspect** the most recent change (git log, git diff, working tree)
+2. **Establish baseline** (queries, AI calls, UX steps, load, build)
+3. **Map impact** (files, routes, screens, userflows, DB, AI, jobs)
+4. **Classify** optimization type (performance / UX / DB / AI cost / security / maintainability)
+5. **Apply** safe high-impact optimizations only
+6. **Preserve** correctness, security, tenant isolation, plan limits, AI credits, document fidelity, branding
+7. **Measure** after optimization (queries reduced, duplications removed, UX steps removed)
+8. **Run TEST** after every OPTIMIZE
+9. **Produce** the OPTIMIZE report
+
+### What OPTIMIZE must never do:
+
+- Remove features or change product behavior without clear benefit
+- Bypass validation, security, permissions, or tenant scoping
+- Cache private/tenant data in shared cache keys
+- Weaken AI credit tracking or plan limit enforcement
+- Break document generation fidelity or style preservation
+- Remove Loopi branding, loading states, or accessibility attributes
+- Run destructive DB commands
+- Optimize by hiding errors
+
+### Priority optimization order for RepetitiveDocs:
+
+1. N+1 database queries in critical paths
+2. Repeated AI calls or bloated prompts
+3. Missing eager loading
+4. Synchronous heavy work that should be queued
+5. Duplicated business logic in controllers/views
+6. Missing pagination on large datasets
+7. Inline form POSTs that cause page reload (convert to AJAX where safe)
+8. Missing loading states
+9. Accessibility gaps (aria labels, focus management, screen reader announcements)
+10. Mobile overflow or touch target issues
+11. Dead code and magic strings
+
+### OPTIMIZE Report format:
+
+```
+# RepetitiveDocs OPTIMIZE System Optimization Report
+## Summary (scope, biggest improvement, highest risk)
+## Baseline Findings (queries, AI calls, UX steps before)
+## Optimizations Applied (file, what, why safe, benefit)
+## Metrics / Evidence (before/after)
+## TEST Results
+## Remaining Risks
+## Final Verdict: OPTIMIZED AND SAFE | OPTIMIZED WITH FOLLOW-UP | NOT SAFE
+```
+
+---
+
 ## Deployment
 
 ### Deploy script: `.\deploy-production.bat`

@@ -19,26 +19,54 @@ class TemplateEditorController extends Controller
             ->select(['id','template_id','workspace_id','name','label','type',
                       'description','example_value','approval_status',
                       'occurrences','is_required','sort_order','ai_suggested',
-                      'text_positions', 'needs_review', 'needs_review_reason',
-                      'value_mode', 'fixed_value', 'default_value'])
+                      'text_positions','needs_review','needs_review_reason',
+                      'value_mode','fixed_value','default_value'])
             ->orderBy('sort_order')
         ]);
+
+        // syncReadiness() now returns counts in the same GROUP BY query — no extra trips.
+        // We don't need the counts here (view derives them from collections), but calling
+        // this ensures readiness_score is always fresh on page load.
         $this->syncReadiness($template);
 
         $vars = $template->variables;
 
-        // Split pending into: confident (normal review) and needs_review (uncertain)
-        $allPending   = $vars->where('approval_status', 'pending');
-        $needsReview  = $allPending->filter(fn($v) => (bool) $v->needs_review);
-        $pending      = $allPending->filter(fn($v) => !(bool) $v->needs_review);
+        // Split pending by AI confidence. Compute in controller, not view, for testability.
+        $allPending  = $vars->where('approval_status', 'pending');
+        $needsReview = $allPending->filter(fn($v) => (bool) $v->needs_review);
+        $pending     = $allPending->filter(fn($v) => !(bool) $v->needs_review);
+        $approved    = $vars->where('approval_status', 'approved');
+        $rejected    = $vars->where('approval_status', 'rejected');
+
+        // Pre-compute repeating/standalone splits for each tab so the view doesn't re-filter.
+        $groupedVars = [
+            'pending'  => [
+                'repeating'  => $pending->filter(fn($v) => ($v->occurrences ?: 1) > 1),
+                'standalone' => $pending->filter(fn($v) => ($v->occurrences ?: 1) <= 1),
+            ],
+            'approved' => [
+                'repeating'  => $approved->filter(fn($v) => ($v->occurrences ?: 1) > 1),
+                'standalone' => $approved->filter(fn($v) => ($v->occurrences ?: 1) <= 1),
+            ],
+            'rejected' => [
+                'repeating'  => $rejected->filter(fn($v) => ($v->occurrences ?: 1) > 1),
+                'standalone' => $rejected->filter(fn($v) => ($v->occurrences ?: 1) <= 1),
+            ],
+        ];
+        $allVars = $pending->concat($approved)->concat($rejected)->concat($needsReview);
+        $groupedVars['all'] = [
+            'repeating'  => $allVars->filter(fn($v) => ($v->occurrences ?: 1) > 1),
+            'standalone' => $allVars->filter(fn($v) => ($v->occurrences ?: 1) <= 1),
+        ];
 
         return view('template-editor', [
             'template'     => $template,
             'readiness'    => $template->readiness_score ?? 0,
             'pending'      => $pending,
             'needs_review' => $needsReview,
-            'approved'     => $vars->where('approval_status', 'approved'),
-            'rejected'     => $vars->where('approval_status', 'rejected'),
+            'approved'     => $approved,
+            'rejected'     => $rejected,
+            'groupedVars'  => $groupedVars,
         ]);
     }
 
@@ -53,7 +81,7 @@ class TemplateEditorController extends Controller
         $this->authorizeVariable($template, $variable);
 
         $variable->update(['approval_status' => 'approved']);
-        $this->syncReadiness($template);
+        $counts = $this->syncReadiness($template); // 1 query: counts + readiness in one shot
 
         if (request()->expectsJson()) {
             return response()->json([
@@ -61,7 +89,7 @@ class TemplateEditorController extends Controller
                 'status'    => 'approved',
                 'label'     => $variable->label,
                 'message'   => '"' . $variable->label . '" approved.',
-                'counts'    => $this->getCounts($template),
+                'counts'    => $counts,
                 'readiness' => $template->readiness_score,
             ]);
         }
@@ -75,7 +103,7 @@ class TemplateEditorController extends Controller
         $this->authorizeVariable($template, $variable);
 
         $variable->update(['approval_status' => 'rejected']);
-        $this->syncReadiness($template);
+        $counts = $this->syncReadiness($template);
 
         if (request()->expectsJson()) {
             return response()->json([
@@ -83,7 +111,7 @@ class TemplateEditorController extends Controller
                 'status'    => 'rejected',
                 'label'     => $variable->label,
                 'message'   => '"' . $variable->label . '" rejected.',
-                'counts'    => $this->getCounts($template),
+                'counts'    => $counts,
                 'readiness' => $template->readiness_score,
             ]);
         }
@@ -97,7 +125,7 @@ class TemplateEditorController extends Controller
         $this->authorizeVariable($template, $variable);
 
         $variable->update(['approval_status' => 'pending']);
-        $this->syncReadiness($template);
+        $counts = $this->syncReadiness($template);
 
         if (request()->expectsJson()) {
             return response()->json([
@@ -105,7 +133,7 @@ class TemplateEditorController extends Controller
                 'status'    => 'pending',
                 'label'     => $variable->label,
                 'message'   => '"' . $variable->label . '" moved back to pending.',
-                'counts'    => $this->getCounts($template),
+                'counts'    => $counts,
                 'readiness' => $template->readiness_score,
             ]);
         }
@@ -157,13 +185,13 @@ class TemplateEditorController extends Controller
         $this->authorizeWorkspace($template);
 
         $template->variables()->where('approval_status', 'pending')->update(['approval_status' => 'approved']);
-        $this->syncReadiness($template);
+        $counts = $this->syncReadiness($template);
 
         if (request()->expectsJson()) {
             return response()->json([
                 'success'   => true,
                 'message'   => 'All pending variables approved.',
-                'counts'    => $this->getCounts($template),
+                'counts'    => $counts,
                 'readiness' => $template->readiness_score,
             ]);
         }
@@ -226,50 +254,48 @@ class TemplateEditorController extends Controller
         }
     }
 
-    private function syncReadiness(Template $template): void
+    /**
+     * Compute all approval counts in ONE GROUP BY query, then derive and persist the readiness
+     * score from the same result.
+     *
+     * OPTIMIZATION: Previously `syncReadiness()` ran 2 separate count queries (total + approved)
+     * AND `getCounts()` ran a third GROUP BY query — totalling 3 queries per approve/reject/undo.
+     * This single method replaces both with 1 query, reducing DB round-trips by 66% per action.
+     */
+    private function syncReadiness(Template $template): array
     {
-        $total    = $template->variables()->count();
-        $approved = $template->variables()->where('approval_status', 'approved')->count();
+        $rows = $template->variables()
+            ->selectRaw('approval_status, COALESCE(needs_review, 0) as nr, count(*) as cnt')
+            ->groupBy('approval_status', 'nr')
+            ->get();
 
+        $pending     = 0;
+        $needsReview = 0;
+        $approved    = 0;
+        $rejected    = 0;
+
+        foreach ($rows as $row) {
+            $cnt = (int) $row->cnt;
+            match ($row->approval_status) {
+                'approved' => $approved    += $cnt,
+                'rejected' => $rejected    += $cnt,
+                'pending'  => $row->nr ? ($needsReview += $cnt) : ($pending += $cnt),
+                default    => null,
+            };
+        }
+
+        $total = $pending + $needsReview + $approved + $rejected;
         $score = $total > 0 ? (int) round(($approved / $total) * 100) : 0;
 
         $template->update(['readiness_score' => $score]);
         $template->readiness_score = $score;
-    }
-
-    /** Returns counts for all approval states — used by AJAX responses to update badges. */
-    private function getCounts(Template $template): array
-    {
-        $counts = $template->variables()
-            ->selectRaw('approval_status, needs_review, count(*) as cnt')
-            ->groupBy('approval_status', 'needs_review')
-            ->get();
-
-        $pending      = 0;
-        $needsReview  = 0;
-        $approved     = 0;
-        $rejected     = 0;
-
-        foreach ($counts as $row) {
-            if ($row->approval_status === 'approved') {
-                $approved += $row->cnt;
-            } elseif ($row->approval_status === 'rejected') {
-                $rejected += $row->cnt;
-            } elseif ($row->approval_status === 'pending') {
-                if ($row->needs_review) {
-                    $needsReview += $row->cnt;
-                } else {
-                    $pending += $row->cnt;
-                }
-            }
-        }
 
         return [
             'pending'      => $pending,
             'needs_review' => $needsReview,
             'approved'     => $approved,
             'rejected'     => $rejected,
-            'total'        => $pending + $needsReview + $approved + $rejected,
+            'total'        => $total,
         ];
     }
 }

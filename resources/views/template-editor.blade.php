@@ -77,6 +77,8 @@
 
                     {{-- Pending tab --}}
                     <button @click="activeTab = 'pending'"
+                            role="tab"
+                            :aria-selected="activeTab === 'pending'"
                             :class="activeTab === 'pending' ? 'bg-white text-navy shadow-sm' : 'text-slate hover:text-navy'"
                             class="px-3 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 whitespace-nowrap">
                         Pending
@@ -171,11 +173,11 @@
                     @endif
                 </div>
 
-                {{-- Pending tab --}}
+                {{-- Pending tab — groupedVars pre-computed in controller, no re-filtering here --}}
                 <div x-show="activeTab === 'pending'">
                     @php
-                        $pendingRepeating  = $pending->filter(fn($v) => ($v->occurrences ?: 1) > 1);
-                        $pendingStandalone = $pending->filter(fn($v) => ($v->occurrences ?: 1) <= 1);
+                        $pendingRepeating  = $groupedVars['pending']['repeating'];
+                        $pendingStandalone = $groupedVars['pending']['standalone'];
                     @endphp
                     @if($pending->isEmpty())
                     <div class="flex flex-col items-center py-16 text-center">
@@ -237,8 +239,8 @@
                 {{-- Approved tab --}}
                 <div x-show="activeTab === 'approved'">
                     @php
-                        $approvedRepeating  = $approved->filter(fn($v) => ($v->occurrences ?: 1) > 1);
-                        $approvedStandalone = $approved->filter(fn($v) => ($v->occurrences ?: 1) <= 1);
+                        $approvedRepeating  = $groupedVars['approved']['repeating'];
+                        $approvedStandalone = $groupedVars['approved']['standalone'];
                     @endphp
                     @if($approved->isEmpty())
                     <p class="text-sm text-muted text-center py-12">No approved fields yet.</p>
@@ -275,8 +277,8 @@
                 {{-- Rejected tab --}}
                 <div x-show="activeTab === 'rejected'">
                     @php
-                        $rejectedRepeating  = $rejected->filter(fn($v) => ($v->occurrences ?: 1) > 1);
-                        $rejectedStandalone = $rejected->filter(fn($v) => ($v->occurrences ?: 1) <= 1);
+                        $rejectedRepeating  = $groupedVars['rejected']['repeating'];
+                        $rejectedStandalone = $groupedVars['rejected']['standalone'];
                     @endphp
                     @if($rejected->isEmpty())
                     <p class="text-sm text-muted text-center py-12">No rejected fields.</p>
@@ -312,10 +314,9 @@
 
                 {{-- All tab --}}
                 <div x-show="activeTab === 'all'">
-                    @php $allVars = $pending->concat($approved)->concat($rejected); @endphp
                     @php
-                        $allRepeating  = $allVars->filter(fn($v) => ($v->occurrences ?: 1) > 1);
-                        $allStandalone = $allVars->filter(fn($v) => ($v->occurrences ?: 1) <= 1);
+                        $allRepeating  = $groupedVars['all']['repeating'];
+                        $allStandalone = $groupedVars['all']['standalone'];
                     @endphp
                     @if($allRepeating->isNotEmpty())
                     <div class="mb-2">
