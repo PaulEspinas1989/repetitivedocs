@@ -51,11 +51,11 @@ APP_DEBUG=false
 APP_URL=https://repetitivedocs.com
 
 DB_CONNECTION=pgsql
-DB_HOST=aws-0-ap-southeast-1.pooler.supabase.com
+DB_HOST=aws-0-ap-northeast-1.pooler.supabase.com
 DB_PORT=5432
 DB_DATABASE=postgres
-DB_USERNAME=postgres.YOUR_SUPABASE_PROJECT_REF
-DB_PASSWORD=YOUR_SUPABASE_DB_PASSWORD
+DB_USERNAME=postgres.mvlpkkceilwigdbynlto
+DB_PASSWORD=MoveUp2039**^^
 DB_SSLMODE=require
 
 SESSION_DRIVER=database
@@ -226,8 +226,8 @@ chmod +x /usr/local/bin/deploy-repetitivedocs.sh
 
 echo ""
 echo "=== Setup Complete ==="
-echo "Site is live at: http://YOUR_LINODE_IP"
-echo "Staging at:      http://YOUR_LINODE_IP:8080"
+echo "Site is live at: http://139.162.61.79"
+echo "Staging at:      http://139.162.61.79:8080"
 echo ""
 echo "Next steps:"
 echo "  1. Point repetitivedocs.com DNS A record to this server IP in GoDaddy"
