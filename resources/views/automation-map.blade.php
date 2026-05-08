@@ -161,28 +161,7 @@
         </div>
         <div class="bg-white rounded-2xl border border-line overflow-hidden">
             @foreach ($repeatingVars as $var)
-            <div class="flex items-center justify-between px-5 py-4 {{ !$loop->last ? 'border-b border-line' : '' }}">
-                <div class="flex items-center gap-3 min-w-0">
-                    <span class="px-2.5 py-1 rounded-lg text-xs font-medium {{ $var->typeBadgeColor() }} flex-shrink-0">
-                        {{ $var->type }}
-                    </span>
-                    <div class="min-w-0">
-                        <div class="flex items-center gap-2">
-                            <p class="text-sm font-medium text-navy truncate">{{ $var->label }}</p>
-                            <span class="px-2 py-0.5 bg-primary/10 text-primary text-xs rounded-full flex-shrink-0">
-                                ×{{ $var->occurrences }}
-                            </span>
-                        </div>
-                        @if ($var->example_value)
-                        <p class="text-xs text-muted truncate">e.g. {{ $var->example_value }}</p>
-                        @endif
-                    </div>
-                </div>
-                <span class="ml-4 flex-shrink-0 px-2.5 py-1 rounded-lg text-xs font-medium
-                    {{ $var->approval_status === 'approved' ? 'bg-success/10 text-success' : ($var->approval_status === 'rejected' ? 'bg-danger/10 text-danger' : 'bg-blue-soft text-primary') }}">
-                    {{ ucfirst($var->approval_status) }}
-                </span>
-            </div>
+            @include('partials.variable-row', ['var' => $var, 'template' => $template])
             @endforeach
         </div>
     </div>
@@ -224,23 +203,7 @@
         </div>
         <div class="bg-white rounded-2xl border border-line overflow-hidden">
             @foreach ($standaloneVars as $var)
-            <div class="flex items-center justify-between px-5 py-4 {{ !$loop->last ? 'border-b border-line' : '' }}">
-                <div class="flex items-center gap-3 min-w-0">
-                    <span class="px-2.5 py-1 rounded-lg text-xs font-medium {{ $var->typeBadgeColor() }} flex-shrink-0">
-                        {{ $var->type }}
-                    </span>
-                    <div class="min-w-0">
-                        <p class="text-sm font-medium text-navy truncate">{{ $var->label }}</p>
-                        @if ($var->example_value)
-                        <p class="text-xs text-muted truncate">e.g. {{ $var->example_value }}</p>
-                        @endif
-                    </div>
-                </div>
-                <span class="ml-4 flex-shrink-0 px-2.5 py-1 rounded-lg text-xs font-medium
-                    {{ $var->approval_status === 'approved' ? 'bg-success/10 text-success' : ($var->approval_status === 'rejected' ? 'bg-danger/10 text-danger' : 'bg-blue-soft text-primary') }}">
-                    {{ ucfirst($var->approval_status) }}
-                </span>
-            </div>
+            @include('partials.variable-row', ['var' => $var, 'template' => $template])
             @endforeach
         </div>
     </div>
