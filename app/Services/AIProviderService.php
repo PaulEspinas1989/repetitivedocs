@@ -99,8 +99,22 @@ class AIProviderService
         $text = preg_replace('/\s*```$/m', '', $text);
         $text = trim($text);
 
+        // Try direct decode first
         $decoded = json_decode($text, true);
+        if (is_array($decoded)) {
+            return $decoded;
+        }
 
-        return is_array($decoded) ? $decoded : null;
+        // Fall back: extract the first {...} block from the text
+        $start = strpos($text, '{');
+        $end   = strrpos($text, '}');
+        if ($start !== false && $end !== false && $end > $start) {
+            $decoded = json_decode(substr($text, $start, $end - $start + 1), true);
+            if (is_array($decoded)) {
+                return $decoded;
+            }
+        }
+
+        return null;
     }
 }

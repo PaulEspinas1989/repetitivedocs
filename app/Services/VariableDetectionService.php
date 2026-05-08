@@ -275,6 +275,10 @@ PROMPT;
         $data = $this->ai->extractJson($response);
 
         if (!$data || !isset($data['variables']) || !is_array($data['variables'])) {
+            $raw = $this->ai->extractText($response);
+            \Illuminate\Support\Facades\Log::error('VariableDetection: unexpected AI response', [
+                'raw' => substr($raw, 0, 1000),
+            ]);
             throw new \RuntimeException('AI returned an unexpected response format.');
         }
 

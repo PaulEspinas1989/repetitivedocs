@@ -33,11 +33,16 @@
       "PowerShell(Move-Item -Force \"c:\\\\Users\\\\paulg\\\\OneDrive\\\\Desktop\\\\repetitivedocs.com\\\\resources\\\\views\\\\layouts\\\\app.blade.php\" \"c:\\\\Users\\\\paulg\\\\OneDrive\\\\Desktop\\\\repetitivedocs.com\\\\resources\\\\views\\\\components\\\\layouts\\\\app.blade.php\")",
       "PowerShell(New-Item -ItemType Directory -Force -Path \"c:\\\\Users\\\\paulg\\\\OneDrive\\\\Desktop\\\\repetitivedocs.com\\\\app\\\\Services\")",
       "PowerShell(New-Item -ItemType Directory -Force -Path \"c:\\\\Users\\\\paulg\\\\OneDrive\\\\Desktop\\\\repetitivedocs.com\\\\resources\\\\views\\\\partials\")",
-      "Bash('C:\\\\laragon\\\\bin\\\\php\\\\php-8.3.30-Win32-vs16-x64\\\\php.exe' -r ' *)"
+      "Bash('C:\\\\laragon\\\\bin\\\\php\\\\php-8.3.30-Win32-vs16-x64\\\\php.exe' -r ' *)",
+      "Skill(update-config)",
+      "Skill(update-config:*)",
+      "Bash(ssh root@139.162.61.79 \"cat /var/www/referralbunny/.env 2>/dev/null | grep -i mail || echo 'not found'\")",
+      "Bash(composer show *)"
     ],
     "additionalDirectories": [
       "C:\\laragon\\bin\\php\\php-8.3.30-Win32-vs16-x64",
-      "C:\\Users\\paulg\\OneDrive\\Desktop\\repetitivedocs.com\\_tmp"
+      "C:\\Users\\paulg\\OneDrive\\Desktop\\repetitivedocs.com\\_tmp",
+      "C:\\Users\\paulg\\.claude\\memory"
     ]
   }
 }
