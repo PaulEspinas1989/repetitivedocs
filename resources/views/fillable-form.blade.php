@@ -61,6 +61,11 @@
                             <label for="field_{{ $var->name }}" class="block text-sm font-medium text-navy mb-1.5">
                                 {{ $var->label }}
                                 @if($var->is_required)<span class="text-danger ml-0.5">*</span>@endif
+                                @if(($var->occurrences ?: 1) > 1)
+                                <span class="ml-2 px-1.5 py-0.5 bg-primary/10 text-primary text-xs rounded-full font-normal">
+                                    updates {{ $var->occurrences }} places
+                                </span>
+                                @endif
                             </label>
 
                             @if($var->type === 'address')
@@ -164,12 +169,21 @@
                         <x-icon name="file-text" class="w-5 h-5" />
                         {{ $template->name }}
                     </h3>
+                    @php
+                        $repeatingCount = $template->approvedVariables->filter(fn($v) => ($v->occurrences ?: 1) > 1)->count();
+                        $totalPlacements = $template->approvedVariables->sum(fn($v) => $v->occurrences ?: 1);
+                    @endphp
                     <div class="space-y-2 text-sm text-white/90">
                         <p>{{ $template->approvedVariables->count() }} fields to fill</p>
+                        @if($totalPlacements > $template->approvedVariables->count())
+                        <p class="text-white/80">Updates {{ $totalPlacements }} places in your document</p>
+                        @endif
+                        @if($repeatingCount > 0)
+                        <p class="text-white/80">{{ $repeatingCount }} field{{ $repeatingCount === 1 ? '' : 's' }} appear multiple times</p>
+                        @endif
                         @if($template->document_type)
                         <p>Type: {{ $template->document_type }}</p>
                         @endif
-                        <p>Readiness: {{ $template->readiness_score }}%</p>
                     </div>
                 </div>
 
@@ -180,7 +194,11 @@
                              class="w-14 h-14 object-contain flex-shrink-0">
                         <div class="text-sm text-slate">
                             <p class="font-medium text-navy mb-1">Loopi's Tip</p>
+                            @if($repeatingCount > 0)
+                            <p>Fields tagged <span class="text-primary font-medium">updates N places</span> appear multiple times. Edit once and Loopi updates all linked placements.</p>
+                            @else
                             <p>Fill in all required fields marked with <span class="text-danger font-bold">*</span> to generate your document.</p>
+                            @endif
                         </div>
                     </div>
                 </div>

@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class TemplateVariable extends Model
 {
@@ -12,15 +13,18 @@ class TemplateVariable extends Model
         'description', 'example_value', 'default_value', 'options',
         'is_required', 'sort_order', 'approval_status', 'ai_suggested',
         'text_positions', 'occurrences',
+        'canonical_variable_id', 'semantic_type', 'entity_role',
+        'grouping_confidence', 'grouping_reason',
     ];
 
     protected $casts = [
-        'options'        => 'array',
-        'is_required'    => 'boolean',
-        'ai_suggested'   => 'boolean',
-        'sort_order'     => 'integer',
-        'text_positions' => 'array',
-        'occurrences'    => 'integer',
+        'options'             => 'array',
+        'is_required'         => 'boolean',
+        'ai_suggested'        => 'boolean',
+        'sort_order'          => 'integer',
+        'text_positions'      => 'array',
+        'occurrences'         => 'integer',
+        'grouping_confidence' => 'integer',
     ];
 
     public function isRepeating(): bool
@@ -36,6 +40,36 @@ class TemplateVariable extends Model
     public function workspace(): BelongsTo
     {
         return $this->belongsTo(Workspace::class);
+    }
+
+    /** All stored occurrence records for this variable. */
+    public function occurrenceRecords(): HasMany
+    {
+        return $this->hasMany(VariableOccurrence::class, 'template_variable_id');
+    }
+
+    /** Active (non-ignored, non-unlinked) occurrences for generation. */
+    public function activeOccurrences(): HasMany
+    {
+        return $this->hasMany(VariableOccurrence::class, 'template_variable_id')
+                    ->where('status', 'active');
+    }
+
+    /**
+     * Return all overlay positions — prefers VariableOccurrence records (richer data),
+     * falls back to the legacy text_positions JSON array.
+     */
+    public function resolveOverlayPositions(): array
+    {
+        if ($this->relationLoaded('activeOccurrences') && $this->activeOccurrences->isNotEmpty()) {
+            return $this->activeOccurrences
+                ->map(fn($occ) => $occ->toOverlayPosition())
+                ->filter()
+                ->values()
+                ->all();
+        }
+
+        return $this->text_positions ?? [];
     }
 
     public function typeBadgeColor(): string

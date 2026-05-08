@@ -16,7 +16,7 @@ class DocumentGenerationService
      */
     public function generate(Template $template, array $values): GeneratedDocument
     {
-        $template->load(['approvedVariables', 'uploadedDocument']);
+        $template->load(['approvedVariables.activeOccurrences', 'uploadedDocument']);
 
         $doc = $template->uploadedDocument;
 
@@ -147,7 +147,6 @@ class DocumentGenerationService
                 return $this->generateFromHtml($template, $values);
             }
 
-            // Detect initial page size from first image to initialise FPDF
             $firstSize = getimagesize($images[0]);
             if (!$firstSize) {
                 return $this->generateFromHtml($template, $values);
@@ -155,8 +154,7 @@ class DocumentGenerationService
             $initMmW = $firstSize[0] * 25.4 / 150;
             $initMmH = $firstSize[1] * 25.4 / 150;
 
-            // Minimal FPDF subclass that zeroes out the ~1mm horizontal cell margin
-            // FPDF default cMargin ≈ 1mm causes all text overlays to render 1mm too far right
+            // Subclass zeroes FPDF's default ~1mm horizontal cell margin
             $pdf = new class('P', 'mm', [$initMmW, $initMmH]) extends \FPDF {
                 public function __construct($orientation, $unit, $size) {
                     parent::__construct($orientation, $unit, $size);
@@ -169,7 +167,6 @@ class DocumentGenerationService
             foreach ($images as $idx => $imgPath) {
                 $pageNum = $idx + 1;
 
-                // Detect this page's actual dimensions (handles mixed-size PDFs)
                 $size = getimagesize($imgPath);
                 if (!$size) {
                     continue;
@@ -177,44 +174,48 @@ class DocumentGenerationService
                 $pageMmW = $size[0] * 25.4 / 150;
                 $pageMmH = $size[1] * 25.4 / 150;
 
-                // AddPage with per-page size so FPDF uses the correct canvas
                 $pdf->AddPage('P', [$pageMmW, $pageMmH]);
-
-                // Place the original page as pixel-perfect background
                 $pdf->Image($imgPath, 0, 0, $pageMmW, $pageMmH);
 
                 foreach ($template->approvedVariables as $var) {
-                    $newValue  = $values[$var->name] ?? null;
-                    $positions = $var->text_positions;
+                    $newValue = $values[$var->name] ?? null;
+                    if ($newValue === null || $newValue === '') {
+                        continue;
+                    }
 
-                    // empty() returns true for "0" in PHP — use explicit check
-                    if ($newValue === null || $newValue === '' || empty($positions)) {
+                    // Use richer occurrence-based positions when available,
+                    // fall back to legacy text_positions JSON
+                    $positions = $var->resolveOverlayPositions();
+                    if (empty($positions)) {
                         continue;
                     }
 
                     foreach ($positions as $pos) {
-                        if ((int) $pos['page'] !== $pageNum) {
+                        if ((int) ($pos['page'] ?? 0) !== $pageNum) {
                             continue;
                         }
 
-                        // Map percentage coords to this page's actual mm dimensions
+                        $fontSize = max((float) ($pos['font_size'] ?? 10), 6);
+
+                        // Map percentage coordinates to mm
                         $x = (float) $pos['x_pct'] * $pageMmW;
                         $y = (float) $pos['y_pct'] * $pageMmH;
-                        // Minimum width based on font size (approx 0.6mm per pt) to avoid
-                        // overflowing into adjacent content while still fitting the new value
-                        $fontSize  = max((float) ($pos['font_size'] ?? 10), 6);
-                        $minW      = $fontSize * 0.6;
-                        $w = max((float) $pos['w_pct'] * $pageMmW, $minW);
-                        $h = max((float) $pos['h_pct'] * $pageMmH, 3);
+                        $w = max((float) $pos['w_pct'] * $pageMmW, $fontSize * 0.5);
 
-                        // Erase old text with white rectangle
+                        // Height: use exactly the detected text height (pt → mm).
+                        // Capping to font-size-based height prevents the white erasure
+                        // rect from being too tall and covering adjacent content above/below.
+                        $detectedH  = (float) $pos['h_pct'] * $pageMmH;
+                        $fontHeightMm = $fontSize * 25.4 / 72; // points to mm
+                        $h = max(min($detectedH, $fontHeightMm * 1.4), $fontHeightMm);
+
+                        // Erase old text (white rect sized to exactly the text line)
                         $pdf->SetFillColor(255, 255, 255);
                         $pdf->Rect($x, $y, $w, $h, 'F');
 
-                        // Resolve font color — expand 3-digit shorthand, default black
+                        // Resolve text color
                         $hexColor = ltrim($pos['font_color'] ?? '#000000', '#');
                         if (strlen($hexColor) === 3) {
-                            // Expand #abc → #aabbcc
                             $hexColor = $hexColor[0].$hexColor[0].$hexColor[1].$hexColor[1].$hexColor[2].$hexColor[2];
                         }
                         if (strlen($hexColor) === 6 && ctype_xdigit($hexColor)) {
@@ -227,15 +228,29 @@ class DocumentGenerationService
                             $pdf->SetTextColor(0, 0, 0);
                         }
 
-                        $pdf->SetFont('Helvetica', '', $fontSize);
+                        // Font weight (bold detection)
+                        $fontStyle = (($pos['font_weight'] ?? 'normal') === 'bold') ? 'B' : '';
+                        $pdf->SetFont('Helvetica', $fontStyle, $fontSize);
                         $pdf->SetXY($x, $y);
 
-                        // FPDF requires ISO-8859-1; convert UTF-8 safely.
-                        // Use !== false check (not ?:) so an empty-string result doesn't
-                        // fall back to raw UTF-8 which FPDF cannot render.
-                        $converted = @iconv('UTF-8', 'ISO-8859-1//TRANSLIT', $newValue);
-                        $display   = ($converted !== false) ? $converted : $newValue;
-                        $pdf->Cell($w, $h, $display, 0, 0, 'L');
+                        // Transliterate UTF-8 to ISO-8859-1 for FPDF
+                        $converted = @iconv('UTF-8', 'ISO-8859-1//TRANSLIT//IGNORE', $newValue);
+                        $display   = ($converted !== false && $converted !== '') ? $converted : $newValue;
+
+                        // Alignment: C for centered text (signature blocks), L otherwise
+                        $align = strtoupper($pos['text_align'] ?? 'L');
+                        if (!in_array($align, ['L', 'C', 'R'], true)) {
+                            $align = 'L';
+                        }
+
+                        // If value is longer than allocated width, shrink font to fit
+                        $strWidth = $pdf->GetStringWidth($display);
+                        if ($strWidth > $w && $strWidth > 0) {
+                            $scaledSize = max($fontSize * ($w / $strWidth), 6);
+                            $pdf->SetFont('Helvetica', $fontStyle, $scaledSize);
+                        }
+
+                        $pdf->Cell($w, $h, $display, 0, 0, $align);
                     }
                 }
             }
