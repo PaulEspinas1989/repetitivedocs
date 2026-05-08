@@ -91,6 +91,37 @@
                 </div>
             </div>
 
+                {{-- Fixed fields review CTA (shown after first generation from a saved template) --}}
+            @if($generated->template->is_saved_template && !$generated->template->fixed_fields_reviewed)
+            <div class="bg-gradient-to-br from-success to-green-600 rounded-2xl p-5 text-white">
+                <div class="flex items-start gap-3">
+                    <x-icon name="sparkles" class="w-6 h-6 flex-shrink-0 mt-0.5" />
+                    <div>
+                        <p class="text-sm font-bold mb-1">Make the next one even faster</p>
+                        <p class="text-xs text-white/90 mb-3">Save answers that stay the same — Loopi will fill them automatically next time.</p>
+                        <a href="{{ route('fixed-fields.review', ['template' => $generated->template_id, 'generated' => $generated->id]) }}"
+                           class="block text-center bg-white text-success py-2 rounded-xl text-sm font-semibold hover:bg-green-50 transition-colors">
+                            Review saved answers →
+                        </a>
+                    </div>
+                </div>
+            </div>
+            @elseif(!$generated->template->is_saved_template)
+            {{-- One-time generation: offer to save as template --}}
+            <div class="bg-gradient-to-br from-primary to-primary-dark rounded-2xl p-5 text-white">
+                <div class="flex items-start gap-3">
+                    <x-icon name="layers" class="w-6 h-6 flex-shrink-0 mt-0.5" />
+                    <div>
+                        <p class="text-sm font-bold mb-1">Want to reuse this document?</p>
+                        <p class="text-xs text-white/90 mb-3">Save it as a template so Loopi can remember what stays the same next time.</p>
+                        <a href="{{ route('fixed-fields.save-as-template', $generated->template_id) }}"
+                           class="block text-center bg-white text-primary py-2 rounded-xl text-sm font-semibold hover:bg-blue-soft transition-colors">
+                            Save as Template →
+                        </a>
+                    </div>
+                </div>
+            </div>
+            @else
             {{-- Upload next doc CTA --}}
             <div class="bg-gradient-to-br from-primary to-primary-dark rounded-2xl p-5 text-white text-center">
                 <x-icon name="upload" class="w-8 h-8 mx-auto mb-3 opacity-90" />
@@ -100,6 +131,7 @@
                     Upload Document
                 </a>
             </div>
+            @endif
 
         </div>
     </div>

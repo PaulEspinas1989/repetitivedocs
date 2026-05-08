@@ -4,7 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Models\GeneratedDocument;
 use App\Models\Template;
+use App\Models\TemplateVariable;
 use App\Services\DocumentGenerationService;
+use App\Services\GenerationValueResolverService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -13,9 +15,11 @@ use Illuminate\View\View;
 
 class FillableFormController extends Controller
 {
-    public function __construct(private DocumentGenerationService $generator) {}
+    public function __construct(
+        private DocumentGenerationService $generator,
+        private GenerationValueResolverService $resolver,
+    ) {}
 
-    // Return type is View|RedirectResponse — redirect fires if no approved variables
     public function show(Template $template): View|RedirectResponse
     {
         $this->authorizeWorkspace($template);
@@ -27,19 +31,27 @@ class FillableFormController extends Controller
                 ->with('toast', 'Approve at least one variable before generating.');
         }
 
-        return view('fillable-form', compact('template'));
+        // Variables the user needs to fill (not fixed_hidden)
+        $formVars   = $template->approvedVariables->filter(fn($v) => !$v->isHiddenFromForm());
+        // Variables that are fixed and auto-filled (shown in summary only)
+        $fixedVars  = $template->approvedVariables->filter(fn($v) => $v->isFixed());
+
+        return view('fillable-form', compact('template', 'formVars', 'fixedVars'));
     }
 
     public function generate(Request $request, Template $template): RedirectResponse
     {
         $this->authorizeWorkspace($template);
-        // approvedVariables() already orders by sort_order — no closure needed here.
-        // The generator service reloads with activeOccurrences for the PDF path.
         $template->load(['approvedVariables']);
 
-        // Build validation rules dynamically from approved variable types
+        // Only build validation rules for fields the user must fill
+        // Fixed fields are not submitted and not validated here
         $rules = [];
         foreach ($template->approvedVariables as $var) {
+            if ($var->isHiddenFromForm()) {
+                continue; // fixed_hidden — auto-filled, no user input required
+            }
+
             $rule = $var->is_required ? ['required', 'string', 'max:500'] : ['nullable', 'string', 'max:500'];
             if ($var->type === 'email') {
                 $rule[] = 'email';
@@ -48,23 +60,36 @@ class FillableFormController extends Controller
             } elseif ($var->type === 'number') {
                 $rule = $var->is_required ? ['required', 'numeric'] : ['nullable', 'numeric'];
             }
-            // currency stays as string — user may enter "1,000,000" with commas
             $rules['fields.' . $var->name] = $rule;
         }
 
-        $validated = $request->validate($rules);
-        $values    = $validated['fields'] ?? [];
+        $validated  = $request->validate($rules);
+        $userValues = $validated['fields'] ?? [];
 
-        // Strip peso sign and commas from currency fields so generation stores plain numbers
+        // One-time overrides: user chose "Use a different value this time" for a fixed field
+        $overrides = $request->input('overrides', []);
+
+        // Strip peso sign and commas from currency fields
         foreach ($template->approvedVariables as $var) {
-            if ($var->type === 'currency' && isset($values[$var->name])) {
-                $values[$var->name] = preg_replace('/[₱,\s]/', '', $values[$var->name]);
+            if ($var->type === 'currency') {
+                if (isset($userValues[$var->name])) {
+                    $userValues[$var->name] = preg_replace('/[₱,\s]/', '', $userValues[$var->name]);
+                }
+                if (isset($overrides[$var->name])) {
+                    $overrides[$var->name] = preg_replace('/[₱,\s]/', '', $overrides[$var->name]);
+                }
             }
         }
 
         try {
-            $generated = $this->generator->generate($template, $values);
-            return redirect()->route('generation-result', $generated->id);
+            $generated = $this->generator->generate($template, $userValues, $overrides);
+
+            // After first generation from a saved template, prompt Fixed Fields Review
+            $redirectRoute = $template->isSavedTemplate() && !$template->fixed_fields_reviewed
+                ? 'generation-result'
+                : 'generation-result';
+
+            return redirect()->route($redirectRoute, $generated->id);
         } catch (\Throwable $e) {
             return back()->withInput()->with('error', 'Document generation failed: ' . $e->getMessage());
         }

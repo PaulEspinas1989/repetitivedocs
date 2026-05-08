@@ -10,6 +10,8 @@
     $isRepeating    = ($var->occurrences ?: 1) > 1;
     $thisCardHasErr = $errors->any() && session('error_variable_id') === $var->id;
     $editingInit    = $thisCardHasErr ? 'true' : 'false';
+    $currentMode    = $var->value_mode ?: 'ask_each_time';
+    $pages          = collect($var->text_positions ?? [])->pluck('page')->unique()->filter()->sort()->values();
 @endphp
 {{--
   x-data uses @json() for label/type — @json() HTML-encodes quotes so they
@@ -17,9 +19,9 @@
   before Alpine parses the object.
 --}}
 <div class="rounded-2xl border-2 {{ $statusClasses }} p-5 transition-all"
-     x-data="{ editing: {{ $editingInit }}, label: @json(old('label', $var->label)), type: @json(old('type', $var->type)) }">
+     x-data="{ editing: {{ $editingInit }}, label: @json(old('label', $var->label)), type: @json(old('type', $var->type)), valueMode: @json($currentMode) }">
 
-    {{-- View mode --}}
+    {{-- ── View mode ─────────────────────────────────────────────── --}}
     <div x-show="!editing">
 
         {{-- Header row: badges + edit button --}}
@@ -47,6 +49,17 @@
                     <x-icon name="x" class="w-3.5 h-3.5" /> Rejected
                 </span>
                 @endif
+
+                {{-- Value mode badge --}}
+                @if($var->approval_status === 'approved' && $var->isFixed())
+                <span class="px-2 py-0.5 bg-success/10 text-success text-xs rounded-full font-medium flex items-center gap-1">
+                    <x-icon name="lock" class="w-3 h-3" /> Fixed
+                </span>
+                @elseif($var->approval_status === 'approved' && $var->isDefault())
+                <span class="px-2 py-0.5 bg-blue-soft text-slate text-xs rounded-full font-medium">
+                    Default
+                </span>
+                @endif
             </div>
 
             <button @click="editing = true"
@@ -60,17 +73,20 @@
         <div class="mb-4">
             <h4 class="font-semibold text-navy text-base leading-tight">{{ $var->label }}</h4>
             <p class="text-xs text-muted font-mono mt-0.5">&#123;&#123; {{ $var->name }} &#125;&#125;</p>
-            @if($var->example_value)
+
+            @if($var->isFixed() && $var->fixed_value)
+            <p class="text-sm text-slate mt-1.5">
+                Fixed as: <span class="font-medium text-navy">{{ Str::limit($var->fixed_value, 80) }}</span>
+            </p>
+            @elseif($var->example_value)
             <p class="text-sm text-slate mt-1.5">
                 e.g. <span class="font-medium text-navy">{{ Str::limit($var->example_value, 80) }}</span>
             </p>
             @endif
+
             @if($var->description)
             <p class="text-xs text-muted mt-1">{{ $var->description }}</p>
             @endif
-            @php
-                $pages = collect($var->text_positions ?? [])->pluck('page')->unique()->filter()->sort()->values();
-            @endphp
             @if($pages->isNotEmpty())
             <p class="text-xs text-muted mt-1">
                 Page{{ $pages->count() > 1 ? 's' : '' }}: {{ $pages->implode(', ') }}
@@ -80,22 +96,19 @@
 
         {{-- Action buttons --}}
         <div class="flex gap-2">
-
             @if($var->approval_status === 'pending')
                 <form method="POST" action="{{ route('templates.variables.approve', [$template->id, $var->id]) }}" class="flex-1">
                     @csrf
                     <button type="submit" data-loading-text="Approving…"
                             class="w-full flex items-center justify-center gap-1.5 bg-success text-white py-2.5 rounded-xl text-sm font-medium hover:bg-green-600 transition-colors">
-                        <x-icon name="check-circle" class="w-4 h-4" />
-                        Approve
+                        <x-icon name="check-circle" class="w-4 h-4" /> Approve
                     </button>
                 </form>
                 <form method="POST" action="{{ route('templates.variables.reject', [$template->id, $var->id]) }}" class="flex-1">
                     @csrf
                     <button type="submit" data-loading-text="Rejecting…"
                             class="w-full flex items-center justify-center gap-1.5 bg-danger/10 text-danger py-2.5 rounded-xl text-sm font-medium hover:bg-danger/20 transition-colors">
-                        <x-icon name="x" class="w-4 h-4" />
-                        Reject
+                        <x-icon name="x" class="w-4 h-4" /> Reject
                     </button>
                 </form>
 
@@ -104,16 +117,14 @@
                     @csrf
                     <button type="submit" data-loading-text="Resetting…"
                             class="w-full flex items-center justify-center gap-1.5 bg-blue-soft text-slate py-2.5 rounded-xl text-sm font-medium hover:bg-blue-light transition-colors">
-                        <x-icon name="arrow-left" class="w-4 h-4" />
-                        Undo
+                        <x-icon name="arrow-left" class="w-4 h-4" /> Undo
                     </button>
                 </form>
                 <form method="POST" action="{{ route('templates.variables.reject', [$template->id, $var->id]) }}" class="flex-1">
                     @csrf
                     <button type="submit" data-loading-text="Rejecting…"
                             class="w-full flex items-center justify-center gap-1.5 bg-danger/10 text-danger py-2.5 rounded-xl text-sm font-medium hover:bg-danger/20 transition-colors">
-                        <x-icon name="x" class="w-4 h-4" />
-                        Reject
+                        <x-icon name="x" class="w-4 h-4" /> Reject
                     </button>
                 </form>
 
@@ -122,26 +133,23 @@
                     @csrf
                     <button type="submit" data-loading-text="Approving…"
                             class="w-full flex items-center justify-center gap-1.5 bg-success text-white py-2.5 rounded-xl text-sm font-medium hover:bg-green-600 transition-colors">
-                        <x-icon name="check-circle" class="w-4 h-4" />
-                        Approve
+                        <x-icon name="check-circle" class="w-4 h-4" /> Approve
                     </button>
                 </form>
                 <form method="POST" action="{{ route('templates.variables.undo', [$template->id, $var->id]) }}" class="flex-1">
                     @csrf
                     <button type="submit" data-loading-text="Resetting…"
                             class="w-full flex items-center justify-center gap-1.5 bg-blue-soft text-slate py-2.5 rounded-xl text-sm font-medium hover:bg-blue-light transition-colors">
-                        <x-icon name="arrow-left" class="w-4 h-4" />
-                        Undo
+                        <x-icon name="arrow-left" class="w-4 h-4" /> Undo
                     </button>
                 </form>
             @endif
-
         </div>
     </div>
 
-    {{-- Edit mode --}}
+    {{-- ── Edit mode ─────────────────────────────────────────────── --}}
     <div x-show="editing" x-cloak>
-        {{-- Validation errors scoped to this variable only --}}
+        {{-- Validation errors --}}
         @if($thisCardHasErr)
         <div class="mb-3 p-3 bg-danger/10 border border-danger/20 rounded-xl text-xs text-danger">
             @foreach($errors->all() as $error)
@@ -149,6 +157,7 @@
             @endforeach
         </div>
         @endif
+
         <div class="flex items-center justify-between mb-4">
             <h4 class="text-sm font-semibold text-navy">Edit Field</h4>
             <button type="button" @click="editing = false"
@@ -156,6 +165,8 @@
                 <x-icon name="x" class="w-4 h-4" />
             </button>
         </div>
+
+        {{-- Field metadata form --}}
         <form method="POST" action="{{ route('templates.variables.update', [$template->id, $var->id]) }}">
             @csrf
             @method('PATCH')
@@ -181,12 +192,11 @@
                     <label for="req_{{ $var->id }}" class="text-xs text-slate">Required field</label>
                 </div>
             </div>
-            <div class="flex gap-2">
+            <div class="flex gap-2 mb-5">
                 <button type="submit"
                         class="flex-1 flex items-center justify-center gap-1.5 bg-primary text-white py-2 rounded-xl text-sm font-medium hover:bg-primary-dark transition-colors"
                         data-loading-text="Saving…">
-                    <x-icon name="check-circle" class="w-4 h-4" />
-                    Save changes
+                    <x-icon name="check-circle" class="w-4 h-4" /> Save changes
                 </button>
                 <button type="button" @click="editing = false"
                         class="px-4 py-2 bg-blue-soft text-slate rounded-xl text-sm hover:bg-blue-light transition-colors">
@@ -194,6 +204,73 @@
                 </button>
             </div>
         </form>
+
+        {{-- Value mode section (only for approved variables) --}}
+        @if($var->approval_status === 'approved')
+        <div class="pt-4 border-t border-line">
+            <p class="text-xs font-semibold text-navy mb-2">How should Loopi handle this field?</p>
+            <div class="flex flex-wrap gap-2 mb-3">
+                <button type="button" @click="valueMode = 'ask_each_time'"
+                        :class="valueMode === 'ask_each_time'
+                            ? 'bg-slate text-white border-slate'
+                            : 'bg-white text-slate border-line hover:border-slate'"
+                        class="flex items-center gap-1 px-2.5 py-1.5 border rounded-lg text-xs font-medium transition-all">
+                    <x-icon name="refresh" class="w-3 h-3" /> Ask every time
+                </button>
+                <button type="button" @click="valueMode = 'default_editable'"
+                        :class="valueMode === 'default_editable'
+                            ? 'bg-primary text-white border-primary'
+                            : 'bg-white text-primary border-line hover:border-primary'"
+                        class="flex items-center gap-1 px-2.5 py-1.5 border rounded-lg text-xs font-medium transition-all">
+                    <x-icon name="pencil" class="w-3 h-3" /> Use as default
+                </button>
+                <button type="button" @click="valueMode = 'fixed_hidden'"
+                        :class="valueMode === 'fixed_hidden'
+                            ? 'bg-success text-white border-success'
+                            : 'bg-white text-success border-line hover:border-success'"
+                        class="flex items-center gap-1 px-2.5 py-1.5 border rounded-lg text-xs font-medium transition-all">
+                    <x-icon name="lock" class="w-3 h-3" /> Keep as fixed
+                </button>
+            </div>
+
+            {{-- Mode description --}}
+            <p x-show="valueMode === 'ask_each_time'" class="text-xs text-muted mb-2">
+                This field appears normally every time. Good for names, dates, amounts.
+            </p>
+            <p x-show="valueMode === 'default_editable'" class="text-xs text-muted mb-2">
+                The form will be pre-filled with your saved value. The user can still edit it.
+            </p>
+            <p x-show="valueMode === 'fixed_hidden'" class="text-xs text-muted mb-2">
+                This field is hidden from the form and automatically used in every document.
+            </p>
+
+            {{-- Save value form --}}
+            <form method="POST" action="{{ route('templates.variables.update-mode', [$template->id, $var->id]) }}">
+                @csrf
+                <input type="hidden" name="value_mode" x-bind:value="valueMode">
+
+                <div x-show="valueMode === 'fixed_hidden' || valueMode === 'default_editable'" x-cloak class="mb-3">
+                    <label class="block text-xs font-medium text-navy mb-1">
+                        <span x-show="valueMode === 'fixed_hidden'">Fixed value</span>
+                        <span x-show="valueMode === 'default_editable'">Default value</span>
+                    </label>
+                    <input type="text" name="fixed_value"
+                           value="{{ $var->fixed_value ?? $var->default_value ?? $var->example_value }}"
+                           placeholder="Enter value to save"
+                           class="w-full px-3 py-2 border border-line rounded-xl text-sm text-navy focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors">
+                </div>
+
+                <button type="submit"
+                        class="w-full flex items-center justify-center gap-1.5 bg-success/10 text-success py-2 rounded-xl text-sm font-medium hover:bg-success/20 transition-colors"
+                        data-loading-text="Saving…">
+                    <x-icon name="check-circle" class="w-4 h-4" />
+                    <span x-show="valueMode === 'fixed_hidden'">Save as fixed</span>
+                    <span x-show="valueMode === 'default_editable'">Save as default</span>
+                    <span x-show="valueMode === 'ask_each_time'">Reset to Ask every time</span>
+                </button>
+            </form>
+        </div>
+        @endif
     </div>
 
 </div>

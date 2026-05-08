@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\Storage;
 
 class GeneratedDocument extends Model
@@ -30,6 +31,11 @@ class GeneratedDocument extends Model
     public function template(): BelongsTo
     {
         return $this->belongsTo(Template::class);
+    }
+
+    public function fieldValues(): HasMany
+    {
+        return $this->hasMany(GeneratedDocumentValue::class);
     }
 
     public function downloadUrl(): string

@@ -3,6 +3,7 @@
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DocumentAnalysisController;
+use App\Http\Controllers\FixedFieldsController;
 use App\Http\Controllers\FillableFormController;
 use App\Http\Controllers\TemplateEditorController;
 use App\Http\Controllers\UploadController;
@@ -72,8 +73,12 @@ Route::middleware(['auth', 'workspace'])->group(function () {
         }
         // Only approve PENDING — do not override intentional rejections
         $template->variables()->where('approval_status', 'pending')->update(['approval_status' => 'approved']);
-        return redirect()->route('templates.editor', $template->id)
-            ->with('toast', 'All pending fields approved. Ready to generate your form.');
+        // Send to upload decision if not yet decided
+        $nextRoute = ($template->save_mode === 'draft')
+            ? 'upload-decision'
+            : 'templates.editor';
+        return redirect()->route($nextRoute, $template->id)
+            ->with('toast', 'All pending fields approved.');
     })->name('templates.approve-all');
 
     // ── Group approve/reject (repeating or standalone) ────────
@@ -121,6 +126,20 @@ Route::middleware(['auth', 'workspace'])->group(function () {
         ]);
         return view('automation-map', compact('template'));
     })->name('templates.variables');
+
+    // ── Upload Decision: Generate Once vs Save as Template ───────
+    Route::get('/templates/{template}/decide',        [FixedFieldsController::class, 'uploadDecision'])->name('upload-decision');
+    Route::post('/templates/{template}/decide/once',  [FixedFieldsController::class, 'chooseGenerateOnce'])->name('upload-decision.generate-once');
+    Route::post('/templates/{template}/decide/save',  [FixedFieldsController::class, 'chooseSaveAsTemplate'])->name('upload-decision.save-template');
+    Route::post('/templates/{template}/save-as-template', [FixedFieldsController::class, 'saveAsTemplate'])->name('fixed-fields.save-as-template');
+
+    // ── Fixed Fields Review ───────────────────────────────────
+    Route::get('/templates/{template}/fixed-fields',               [FixedFieldsController::class, 'review'])->name('fixed-fields.review');
+    Route::get('/templates/{template}/fixed-fields/{generated}',   [FixedFieldsController::class, 'review'])->name('fixed-fields.review.with-generation');
+    Route::post('/templates/{template}/fixed-fields',              [FixedFieldsController::class, 'saveReview'])->name('fixed-fields.save');
+
+    // ── Variable value-mode management ────────────────────────
+    Route::post('/templates/{template}/variables/{variable}/mode', [FixedFieldsController::class, 'updateVariableMode'])->name('templates.variables.update-mode');
 
     // ── Template editor ───────────────────────────────────────
     Route::get('/templates/{template}/editor',   [TemplateEditorController::class, 'show'])->name('templates.editor');

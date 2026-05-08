@@ -8,6 +8,23 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class TemplateVariable extends Model
 {
+    // value_mode constants — use these instead of magic strings
+    const MODE_ASK        = 'ask_each_time';
+    const MODE_DEFAULT    = 'default_editable';
+    const MODE_FIXED      = 'fixed_hidden';
+
+    // User-facing labels for each mode
+    const MODE_LABELS = [
+        self::MODE_ASK     => 'Ask every time',
+        self::MODE_DEFAULT => 'Use as default',
+        self::MODE_FIXED   => 'Keep as fixed',
+    ];
+
+    // Field types considered potentially sensitive (require user confirmation to fix)
+    const SENSITIVE_TYPES = ['email', 'phone'];
+    const SENSITIVE_LABELS = ['recipient name', 'name', 'email', 'phone', 'address',
+                               'id', 'birthdate', 'bank', 'salary', 'password', 'tax'];
+
     protected $fillable = [
         'template_id', 'workspace_id', 'name', 'label', 'type',
         'description', 'example_value', 'default_value', 'options',
@@ -15,6 +32,11 @@ class TemplateVariable extends Model
         'text_positions', 'occurrences',
         'canonical_variable_id', 'semantic_type', 'entity_role',
         'grouping_confidence', 'grouping_reason',
+        // Value-mode fields (new)
+        'value_mode', 'fixed_value',
+        'fixed_value_set_by_generation_id', 'fixed_value_set_by_user_id', 'fixed_value_set_at',
+        'show_when_fixed', 'ai_suggested_mode', 'ai_suggested_mode_reason',
+        'user_confirmed_mode', 'is_sensitive_flag',
     ];
 
     protected $casts = [
@@ -25,11 +47,69 @@ class TemplateVariable extends Model
         'text_positions'      => 'array',
         'occurrences'         => 'integer',
         'grouping_confidence' => 'integer',
+        // Value-mode casts
+        'show_when_fixed'       => 'boolean',
+        'user_confirmed_mode'   => 'boolean',
+        'is_sensitive_flag'     => 'boolean',
+        'fixed_value_set_at'    => 'datetime',
     ];
 
     public function isRepeating(): bool
     {
         return ($this->occurrences ?: 1) > 1;
+    }
+
+    // ── Value mode helpers ────────────────────────────────────────────
+
+    public function isFixed(): bool
+    {
+        return $this->value_mode === self::MODE_FIXED;
+    }
+
+    public function isDefault(): bool
+    {
+        return $this->value_mode === self::MODE_DEFAULT;
+    }
+
+    public function isAskEachTime(): bool
+    {
+        return $this->value_mode === self::MODE_ASK || empty($this->value_mode);
+    }
+
+    /** Returns true if this field requires user input in the fillable form. */
+    public function requiresUserInput(): bool
+    {
+        return $this->value_mode !== self::MODE_FIXED;
+    }
+
+    /** Returns true if this field should be hidden from the normal generation form. */
+    public function isHiddenFromForm(): bool
+    {
+        return $this->value_mode === self::MODE_FIXED && !$this->show_when_fixed;
+    }
+
+    /** The user-facing label for the current mode. */
+    public function valueModeLabel(): string
+    {
+        return self::MODE_LABELS[$this->value_mode ?? self::MODE_ASK] ?? 'Ask every time';
+    }
+
+    /**
+     * Check if this field label suggests it might contain personal/sensitive info.
+     * AI detection: helps warn users before they fix sensitive values.
+     */
+    public function looksLikeSensitive(): bool
+    {
+        if (in_array($this->type, self::SENSITIVE_TYPES, true)) {
+            return true;
+        }
+        $label = mb_strtolower($this->label ?? '');
+        foreach (self::SENSITIVE_LABELS as $keyword) {
+            if (str_contains($label, $keyword)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public function template(): BelongsTo

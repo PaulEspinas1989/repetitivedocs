@@ -11,29 +11,48 @@ use ZipArchive;
 
 class DocumentGenerationService
 {
+    public function __construct(
+        private GenerationValueResolverService $resolver
+    ) {}
+
     /**
      * Generate a personalized document from a template and user-provided values.
+     *
+     * @param Template $template   Template to generate from
+     * @param array    $userValues Values submitted by the user (keyed by variable name)
+     * @param array    $overrides  One-time overrides for fixed fields (keyed by variable name)
      */
-    public function generate(Template $template, array $values): GeneratedDocument
-    {
+    public function generate(
+        Template $template,
+        array $userValues,
+        array $overrides = []
+    ): GeneratedDocument {
         $template->load(['uploadedDocument']);
         $doc = $template->uploadedDocument;
 
         if ($doc && $doc->isDocx()) {
-            // DOCX path: only need variables, not position data
             $template->load(['approvedVariables']);
-            return $this->generateFromDocx($template, $doc, $values);
-        }
-
-        if ($doc && $doc->isPdf()) {
-            // PDF overlay path: load occurrence position data for accurate placement
+        } elseif ($doc && $doc->isPdf()) {
             $template->load(['approvedVariables.activeOccurrences']);
-            return $this->generateFromPdfOverlay($template, $doc, $values);
+        } else {
+            $template->load(['approvedVariables']);
         }
 
-        // Fallback HTML path
-        $template->load(['approvedVariables']);
-        return $this->generateFromHtml($template, $values);
+        // Resolve all values using priority order (fixed > user input > default)
+        $resolvedValues = $this->resolver->resolve($template, $userValues, $overrides);
+
+        if ($doc && $doc->isDocx()) {
+            $generated = $this->generateFromDocx($template, $doc, $resolvedValues);
+        } elseif ($doc && $doc->isPdf()) {
+            $generated = $this->generateFromPdfOverlay($template, $doc, $resolvedValues);
+        } else {
+            $generated = $this->generateFromHtml($template, $resolvedValues);
+        }
+
+        // Record per-field traceability (immutable history)
+        $this->resolver->recordValues($generated, $template, $userValues, $overrides);
+
+        return $generated;
     }
 
     // ── DOCX generation via TemplateProcessor (preserves all formatting) ──

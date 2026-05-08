@@ -7,6 +7,7 @@ use App\Models\TemplateVariable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
+use Illuminate\Support\Facades\Validator;
 
 class TemplateEditorController extends Controller
 {
@@ -101,6 +102,39 @@ class TemplateEditorController extends Controller
         $this->syncReadiness($template);
 
         return back()->with('toast', 'All pending variables approved.');
+    }
+
+    /**
+     * Quick inline value-mode update from the editor.
+     * Full management is done through FixedFieldsController::updateVariableMode.
+     */
+    public function updateVariableMode(Request $request, Template $template, TemplateVariable $variable): RedirectResponse
+    {
+        $this->authorizeWorkspace($template);
+        $this->authorizeVariable($template, $variable);
+
+        $request->validate([
+            'value_mode'  => ['required', 'string', 'in:ask_each_time,default_editable,fixed_hidden'],
+            'fixed_value' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $mode    = $request->value_mode;
+        $updates = ['value_mode' => $mode, 'user_confirmed_mode' => true];
+
+        if ($mode === TemplateVariable::MODE_FIXED && $request->filled('fixed_value')) {
+            $updates['fixed_value']                = $request->fixed_value;
+            $updates['fixed_value_set_by_user_id'] = auth()->id();
+            $updates['fixed_value_set_at']         = now();
+        } elseif ($mode === TemplateVariable::MODE_DEFAULT && $request->filled('fixed_value')) {
+            $updates['default_value'] = $request->fixed_value;
+        } elseif ($mode === TemplateVariable::MODE_ASK) {
+            $updates['fixed_value']   = null;
+            $updates['default_value'] = null;
+        }
+
+        $variable->update($updates);
+
+        return back()->with('toast', '"' . $variable->label . '" updated to "' . TemplateVariable::MODE_LABELS[$mode] . '".');
     }
 
     // ── Private helpers ──────────────────────────────────────────────

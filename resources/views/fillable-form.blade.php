@@ -23,6 +23,71 @@
     </div>
     @endif
 
+    {{-- ── Fixed fields summary ────────────────────────────────── --}}
+    @if($fixedVars->isNotEmpty())
+    <div class="mb-6 bg-success/5 border border-success/20 rounded-2xl p-5"
+         x-data="{ open: false }">
+        <button type="button" @click="open = !open"
+                class="w-full flex items-center justify-between text-left">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 bg-success/10 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <x-icon name="lock" class="w-4 h-4 text-success" />
+                </div>
+                <div>
+                    <p class="text-sm font-semibold text-navy">
+                        Loopi already filled {{ $fixedVars->count() }} fixed field{{ $fixedVars->count() === 1 ? '' : 's' }} for this template
+                    </p>
+                    <p class="text-xs text-muted">These are automatically used — you don't need to type them again.</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-3 flex-shrink-0 ml-4">
+                <a href="{{ route('templates.editor', $template->id) }}"
+                   class="text-xs text-primary hover:underline font-medium hidden sm:inline">
+                    Edit fixed fields
+                </a>
+                <x-icon name="arrow-down" class="w-4 h-4 text-muted transition-transform" :class="open ? 'rotate-180' : ''" />
+            </div>
+        </button>
+
+        {{-- Expanded fixed fields list --}}
+        <div x-show="open" x-cloak class="mt-4 pt-4 border-t border-success/20">
+            <div class="space-y-2">
+                @foreach($fixedVars as $var)
+                <div class="flex items-center justify-between py-2 px-3 bg-white rounded-xl border border-success/10"
+                     x-data="{ overriding: false }">
+                    <div class="min-w-0 flex-1">
+                        <p class="text-xs text-muted">{{ $var->label }}</p>
+                        <p class="text-sm font-medium text-navy truncate">
+                            {{ Str::limit($var->fixed_value ?? '—', 60) }}
+                        </p>
+                    </div>
+                    <div class="flex items-center gap-2 flex-shrink-0 ml-3">
+                        <span class="px-2 py-0.5 bg-success/10 text-success text-xs rounded-full font-medium">Fixed</span>
+                        <button type="button" @click="overriding = !overriding"
+                                class="text-xs text-muted hover:text-primary transition-colors">
+                            Use different value
+                        </button>
+                    </div>
+                </div>
+                {{-- One-time override input --}}
+                <div x-show="false" x-cloak class="px-3 pb-2" id="override-{{ $var->name }}">
+                    <input type="text"
+                           name="overrides[{{ $var->name }}]"
+                           placeholder="Enter a different value for this document only"
+                           class="w-full px-3 py-2 border border-warning/30 rounded-xl text-sm text-navy focus:outline-none focus:ring-2 focus:ring-warning/20 focus:border-warning transition-colors">
+                    <p class="text-xs text-warning mt-1">This only affects the current document. The fixed value stays saved.</p>
+                </div>
+                @endforeach
+            </div>
+            <a href="{{ route('fixed-fields.review', $template->id) }}"
+               class="mt-3 inline-flex items-center gap-1.5 text-xs text-primary hover:underline">
+                <x-icon name="settings" class="w-3.5 h-3.5" />
+                Manage all saved answers
+            </a>
+        </div>
+    </div>
+    @endif
+
     <form method="POST" action="{{ route('fillable-form.generate', $template->id) }}">
         @csrf
 
@@ -33,15 +98,26 @@
 
                 @php
                     $typeGroups = [
-                        'text'     => $template->approvedVariables->whereIn('type', ['text', 'select']),
-                        'contact'  => $template->approvedVariables->whereIn('type', ['email', 'phone', 'address']),
-                        'date'     => $template->approvedVariables->where('type', 'date'),
-                        'number'   => $template->approvedVariables->whereIn('type', ['number', 'currency']),
+                        'text'     => $formVars->whereIn('type', ['text', 'select']),
+                        'contact'  => $formVars->whereIn('type', ['email', 'phone', 'address']),
+                        'date'     => $formVars->where('type', 'date'),
+                        'number'   => $formVars->whereIn('type', ['number', 'currency']),
                     ];
                     $groupColors = ['text' => 'primary', 'contact' => 'success', 'date' => 'warning', 'number' => 'warning'];
                     $groupLabels = ['text' => 'Text Fields', 'contact' => 'Contact & Location', 'date' => 'Dates', 'number' => 'Numbers & Amounts'];
                     $stepNum = 0;
                 @endphp
+
+                @forelse($formVars as $var)
+                @php $dummy = true; @endphp
+                @empty
+                {{-- All fields are fixed --}}
+                <div class="flex flex-col items-center py-12 text-center">
+                    <x-icon name="check-circle" class="w-12 h-12 text-success mb-4" />
+                    <p class="font-semibold text-navy">All fields are already filled!</p>
+                    <p class="text-sm text-slate mt-1">Loopi has fixed values for every field in this template.</p>
+                </div>
+                @endforelse
 
                 @foreach($typeGroups as $groupKey => $groupVars)
                 @if($groupVars->isNotEmpty())
@@ -66,6 +142,11 @@
                                     updates {{ $var->occurrences }} places
                                 </span>
                                 @endif
+                                @if($var->isDefault())
+                                <span class="ml-2 px-1.5 py-0.5 bg-blue-soft text-slate text-xs rounded-full font-normal">
+                                    Default
+                                </span>
+                                @endif
                             </label>
 
                             @if($var->type === 'address')
@@ -75,7 +156,7 @@
                                 rows="3"
                                 placeholder="{{ $var->example_value ?? 'Enter ' . $var->label }}"
                                 class="w-full px-4 py-3 border border-line rounded-xl bg-white text-navy text-sm placeholder-muted focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors @error('fields.'.$var->name) border-danger @enderror"
-                            >{{ old('fields.' . $var->name) }}</textarea>
+                            >{{ old('fields.' . $var->name, $var->default_value) }}</textarea>
 
                             @elseif($var->type === 'currency')
                             <div class="relative">
@@ -84,7 +165,7 @@
                                     type="text"
                                     id="field_{{ $var->name }}"
                                     name="fields[{{ $var->name }}]"
-                                    value="{{ old('fields.' . $var->name) }}"
+                                    value="{{ old('fields.' . $var->name, $var->default_value) }}"
                                     placeholder="{{ $var->example_value ?? '0.00' }}"
                                     class="w-full pl-8 pr-4 py-3 border border-line rounded-xl bg-white text-navy text-sm placeholder-muted focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors @error('fields.'.$var->name) border-danger @enderror"
                                 >
@@ -96,7 +177,7 @@
                                 type="date"
                                 id="field_{{ $var->name }}"
                                 name="fields[{{ $var->name }}]"
-                                value="{{ old('fields.' . $var->name) }}"
+                                value="{{ old('fields.' . $var->name, $var->default_value) }}"
                                 class="w-full px-4 py-3 border border-line rounded-xl bg-white text-navy text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors @error('fields.'.$var->name) border-danger @enderror"
                             >
 
@@ -107,7 +188,7 @@
                                     type="email"
                                     id="field_{{ $var->name }}"
                                     name="fields[{{ $var->name }}]"
-                                    value="{{ old('fields.' . $var->name) }}"
+                                    value="{{ old('fields.' . $var->name, $var->default_value) }}"
                                     placeholder="{{ $var->example_value ?? 'email@example.com' }}"
                                     class="w-full pl-10 pr-4 py-3 border border-line rounded-xl bg-white text-navy text-sm placeholder-muted focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors @error('fields.'.$var->name) border-danger @enderror"
                                 >
@@ -120,7 +201,7 @@
                                     type="tel"
                                     id="field_{{ $var->name }}"
                                     name="fields[{{ $var->name }}]"
-                                    value="{{ old('fields.' . $var->name) }}"
+                                    value="{{ old('fields.' . $var->name, $var->default_value) }}"
                                     placeholder="{{ $var->example_value ?? '+63 XXX XXX XXXX' }}"
                                     class="w-full pl-10 pr-4 py-3 border border-line rounded-xl bg-white text-navy text-sm placeholder-muted focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors @error('fields.'.$var->name) border-danger @enderror"
                                 >
@@ -131,10 +212,13 @@
                                 type="{{ in_array($var->type, ['number']) ? 'number' : 'text' }}"
                                 id="field_{{ $var->name }}"
                                 name="fields[{{ $var->name }}]"
-                                value="{{ old('fields.' . $var->name) }}"
+                                value="{{ old('fields.' . $var->name, $var->default_value) }}"
                                 placeholder="{{ $var->example_value ?? 'Enter ' . $var->label }}"
                                 class="w-full px-4 py-3 border border-line rounded-xl bg-white text-navy text-sm placeholder-muted focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors @error('fields.'.$var->name) border-danger @enderror"
                             >
+                            @if($var->isDefault())
+                            <p class="text-xs text-muted mt-1">Pre-filled from your template. You can edit this for this document.</p>
+                            @endif
                             @endif
 
                             @error('fields.' . $var->name)
@@ -163,23 +247,28 @@
             {{-- ── Right: Info + summary ───────────────────────── --}}
             <div class="space-y-5">
 
+                @php
+                    $repeatingCount  = $formVars->filter(fn($v) => ($v->occurrences ?: 1) > 1)->count();
+                    $totalPlacements = $formVars->sum(fn($v) => $v->occurrences ?: 1)
+                                     + $fixedVars->sum(fn($v) => $v->occurrences ?: 1);
+                @endphp
+
                 {{-- Field count card --}}
                 <div class="bg-gradient-to-br from-primary to-primary-dark rounded-2xl p-6 text-white">
                     <h3 class="font-semibold mb-3 flex items-center gap-2">
                         <x-icon name="file-text" class="w-5 h-5" />
                         {{ $template->name }}
                     </h3>
-                    @php
-                        $repeatingCount = $template->approvedVariables->filter(fn($v) => ($v->occurrences ?: 1) > 1)->count();
-                        $totalPlacements = $template->approvedVariables->sum(fn($v) => $v->occurrences ?: 1);
-                    @endphp
                     <div class="space-y-2 text-sm text-white/90">
-                        <p>{{ $template->approvedVariables->count() }} fields to fill</p>
-                        @if($totalPlacements > $template->approvedVariables->count())
-                        <p class="text-white/80">Updates {{ $totalPlacements }} places in your document</p>
+                        <p>{{ $formVars->count() }} fields to fill</p>
+                        @if($fixedVars->isNotEmpty())
+                        <p class="text-white/80">
+                            <x-icon name="lock" class="w-3.5 h-3.5 inline" />
+                            {{ $fixedVars->count() }} fixed automatically
+                        </p>
                         @endif
-                        @if($repeatingCount > 0)
-                        <p class="text-white/80">{{ $repeatingCount }} field{{ $repeatingCount === 1 ? '' : 's' }} appear multiple times</p>
+                        @if($totalPlacements > $formVars->count() + $fixedVars->count())
+                        <p class="text-white/80">Updates {{ $totalPlacements }} places in your document</p>
                         @endif
                         @if($template->document_type)
                         <p>Type: {{ $template->document_type }}</p>
@@ -194,8 +283,10 @@
                              class="w-14 h-14 object-contain flex-shrink-0">
                         <div class="text-sm text-slate">
                             <p class="font-medium text-navy mb-1">Loopi's Tip</p>
-                            @if($repeatingCount > 0)
-                            <p>Fields tagged <span class="text-primary font-medium">updates N places</span> appear multiple times. Edit once and Loopi updates all linked placements.</p>
+                            @if($fixedVars->isNotEmpty() && $repeatingCount > 0)
+                            <p>Fixed fields with <span class="text-primary font-medium">updates N places</span> appear multiple times. Edit once and Loopi updates all linked placements.</p>
+                            @elseif($fixedVars->isNotEmpty())
+                            <p>{{ $fixedVars->count() }} field{{ $fixedVars->count() === 1 ? ' is' : 's are' }} already filled from your saved template settings.</p>
                             @else
                             <p>Fill in all required fields marked with <span class="text-danger font-bold">*</span> to generate your document.</p>
                             @endif
@@ -207,12 +298,23 @@
                 <div class="bg-white rounded-2xl border border-line p-5">
                     <h3 class="text-sm font-semibold text-navy mb-3">Fields in this form</h3>
                     <div class="space-y-2">
-                        @foreach($template->approvedVariables as $var)
+                        @foreach($formVars as $var)
                         <div class="flex items-center justify-between text-sm">
                             <span class="text-slate truncate mr-2">{{ $var->label }}</span>
                             <span class="px-2 py-0.5 rounded text-xs {{ $var->typeBadgeColor() }} flex-shrink-0">{{ $var->type }}</span>
                         </div>
                         @endforeach
+                        @if($fixedVars->isNotEmpty())
+                        <div class="pt-2 mt-2 border-t border-line">
+                            <p class="text-xs text-muted mb-1">Fixed (auto-filled)</p>
+                            @foreach($fixedVars as $var)
+                            <div class="flex items-center justify-between text-sm">
+                                <span class="text-muted truncate mr-2 line-through">{{ $var->label }}</span>
+                                <span class="px-2 py-0.5 bg-success/10 text-success text-xs rounded-full flex-shrink-0">Fixed</span>
+                            </div>
+                            @endforeach
+                        </div>
+                        @endif
                     </div>
                 </div>
 
