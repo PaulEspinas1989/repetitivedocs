@@ -30,7 +30,7 @@
         {{-- Page header --}}
         <div class="mb-6 md:mb-8">
             <h1 class="text-2xl md:text-3xl font-bold text-navy mb-2">Upload Your Document</h1>
-            <p class="text-slate text-sm md:text-base">Drop your PDF or Word file and let AI find what needs to be automated</p>
+            <p class="text-slate text-sm md:text-base">Upload a Word (.docx) file to preserve your exact formatting — fonts, tables, letterhead and all</p>
         </div>
 
         {{-- Errors --}}
@@ -95,9 +95,9 @@
                                          :class="isDragging ? 'bg-primary/20' : 'bg-primary/10'">
                                         <x-icon name="upload" class="w-8 h-8 md:w-10 md:h-10 text-primary" />
                                     </div>
-                                    <p class="text-base md:text-lg font-semibold text-navy mb-2">Drop your PDF or Word file here</p>
+                                    <p class="text-base md:text-lg font-semibold text-navy mb-2">Drop your Word or PDF file here</p>
                                     <p class="text-sm text-slate mb-3">or click to browse</p>
-                                    <p class="text-xs text-muted">Supports PDF and DOCX files</p>
+                                    <p class="text-xs text-muted">DOCX recommended · PDF supported</p>
                                 </div>
                             </template>
                         </div>
@@ -105,11 +105,10 @@
 
                     {{-- Smart file-type message --}}
                     <div x-show="!fileName"
-                         class="flex items-start gap-3 p-3 bg-success/5 border border-success/20 rounded-xl text-sm">
-                        <x-icon name="check-circle" class="w-4 h-4 text-success flex-shrink-0 mt-0.5" />
+                         class="flex items-start gap-3 p-3 bg-primary/5 border border-primary/20 rounded-xl text-sm">
+                        <x-icon name="sparkles" class="w-4 h-4 text-primary flex-shrink-0 mt-0.5" />
                         <p class="text-slate">
-                            <strong class="text-navy">Best results:</strong> Upload a <strong>.DOCX</strong> file to preserve your original letter formatting exactly.
-                            PDF uploads are supported — formatting is preserved on the server using LibreOffice conversion.
+                            <strong class="text-navy">Recommended: upload a .DOCX file.</strong> Word files preserve your exact formatting — fonts, tables, spacing, letterhead — in every generated document.
                         </p>
                     </div>
 
@@ -117,9 +116,9 @@
                          class="flex items-start gap-3 p-3 bg-warning/5 border border-warning/20 rounded-xl text-sm">
                         <x-icon name="alert-circle" class="w-4 h-4 text-warning flex-shrink-0 mt-0.5" />
                         <div class="text-slate">
-                            <p class="font-medium text-navy mb-0.5">PDF uploaded</p>
-                            <p>On the production server, your PDF will be automatically converted to DOCX using LibreOffice before analysis — preserving your exact formatting.</p>
-                            <p class="mt-1 text-xs text-muted">Locally (dev mode), formatting uses best-effort text matching. Upload the .docx version locally for exact results.</p>
+                            <p class="font-medium text-navy mb-0.5">PDF uploaded — formatting note</p>
+                            <p>AI will detect your variable fields, but the generated document will be a text-based replica — not a pixel-perfect copy of the original layout.</p>
+                            <p class="mt-1 text-xs text-muted">For exact formatting, save your document as <strong>.docx</strong> from Word and upload that instead.</p>
                         </div>
                     </div>
 
