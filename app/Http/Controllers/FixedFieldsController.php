@@ -136,7 +136,17 @@ class FixedFieldsController extends Controller
 
         $modes       = $request->input('modes', []);
         $fixedValues = $request->input('fixed_values', []);
-        $lastGenId   = $request->input('generation_id');
+
+        // Validate generation_id belongs to this template (tenant isolation)
+        $rawGenId  = $request->input('generation_id');
+        $lastGenId = null;
+        if ($rawGenId) {
+            $genBelongs = \App\Models\GeneratedDocument::where('id', $rawGenId)
+                ->where('template_id', $template->id)
+                ->where('workspace_id', $template->workspace_id)
+                ->exists();
+            $lastGenId = $genBelongs ? (int) $rawGenId : null;
+        }
 
         foreach ($template->approvedVariables as $var) {
             $mode = $modes[$var->name] ?? TemplateVariable::MODE_ASK;
@@ -183,6 +193,11 @@ class FixedFieldsController extends Controller
     {
         $this->authorizeWorkspace($template);
         $this->authorizeVariable($template, $variable);
+
+        // Only approved variables should have value modes managed
+        if ($variable->approval_status !== 'approved') {
+            return back()->with('error', 'Only approved fields can have a saved value mode.');
+        }
 
         $request->validate([
             'value_mode'  => ['required', 'string', 'in:ask_each_time,default_editable,fixed_hidden'],

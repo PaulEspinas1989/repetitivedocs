@@ -99,7 +99,7 @@
                     <div>
                         <p class="text-sm font-bold mb-1">Make the next one even faster</p>
                         <p class="text-xs text-white/90 mb-3">Save answers that stay the same — Loopi will fill them automatically next time.</p>
-                        <a href="{{ route('fixed-fields.review', ['template' => $generated->template_id, 'generated' => $generated->id]) }}"
+                        <a href="{{ route('fixed-fields.review.with-generation', ['template' => $generated->template_id, 'generated' => $generated->id]) }}"
                            class="block text-center bg-white text-success py-2 rounded-xl text-sm font-semibold hover:bg-green-50 transition-colors">
                             Review saved answers →
                         </a>

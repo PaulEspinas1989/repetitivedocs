@@ -53,29 +53,33 @@
         <div x-show="open" x-cloak class="mt-4 pt-4 border-t border-success/20">
             <div class="space-y-2">
                 @foreach($fixedVars as $var)
-                <div class="flex items-center justify-between py-2 px-3 bg-white rounded-xl border border-success/10"
-                     x-data="{ overriding: false }">
-                    <div class="min-w-0 flex-1">
-                        <p class="text-xs text-muted">{{ $var->label }}</p>
-                        <p class="text-sm font-medium text-navy truncate">
-                            {{ Str::limit($var->fixed_value ?? '—', 60) }}
-                        </p>
+                {{-- Override input MUST be inside the same x-data scope as the toggle button --}}
+                <div x-data="{ overriding: false }"
+                     class="rounded-xl border border-success/10 bg-white overflow-hidden">
+                    <div class="flex items-center justify-between py-2 px-3">
+                        <div class="min-w-0 flex-1">
+                            <p class="text-xs text-muted">{{ $var->label }}</p>
+                            <p class="text-sm font-medium text-navy truncate">
+                                {{ Str::limit($var->fixed_value ?? '—', 60) }}
+                            </p>
+                        </div>
+                        <div class="flex items-center gap-2 flex-shrink-0 ml-3">
+                            <span class="px-2 py-0.5 bg-success/10 text-success text-xs rounded-full font-medium">Fixed</span>
+                            <button type="button" @click="overriding = !overriding"
+                                    class="text-xs text-muted hover:text-primary transition-colors">
+                                <span x-show="!overriding">Use different value</span>
+                                <span x-show="overriding">Cancel</span>
+                            </button>
+                        </div>
                     </div>
-                    <div class="flex items-center gap-2 flex-shrink-0 ml-3">
-                        <span class="px-2 py-0.5 bg-success/10 text-success text-xs rounded-full font-medium">Fixed</span>
-                        <button type="button" @click="overriding = !overriding"
-                                class="text-xs text-muted hover:text-primary transition-colors">
-                            Use different value
-                        </button>
+                    {{-- Override input — inside same x-data scope so overriding state works --}}
+                    <div x-show="overriding" x-cloak class="px-3 pb-3 border-t border-warning/20 pt-2">
+                        <input type="text"
+                               name="overrides[{{ $var->name }}]"
+                               placeholder="Enter a different value for this document only"
+                               class="w-full px-3 py-2 border border-warning/30 rounded-xl text-sm text-navy focus:outline-none focus:ring-2 focus:ring-warning/20 focus:border-warning transition-colors">
+                        <p class="text-xs text-warning mt-1">This only affects the current document. The fixed value stays saved.</p>
                     </div>
-                </div>
-                {{-- One-time override input --}}
-                <div x-show="false" x-cloak class="px-3 pb-2" id="override-{{ $var->name }}">
-                    <input type="text"
-                           name="overrides[{{ $var->name }}]"
-                           placeholder="Enter a different value for this document only"
-                           class="w-full px-3 py-2 border border-warning/30 rounded-xl text-sm text-navy focus:outline-none focus:ring-2 focus:ring-warning/20 focus:border-warning transition-colors">
-                    <p class="text-xs text-warning mt-1">This only affects the current document. The fixed value stays saved.</p>
                 </div>
                 @endforeach
             </div>

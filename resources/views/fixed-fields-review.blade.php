@@ -219,17 +219,16 @@
 
 <script>
 function setAllModes(mode) {
-    document.querySelectorAll('[data-mode-btn]').forEach(btn => {
-        if (btn.dataset.mode === mode) btn.click();
-    });
-    // Direct approach: set all hidden mode inputs
-    document.querySelectorAll('[name^="modes["]').forEach(input => {
-        input.value = mode;
-    });
-    // Trigger Alpine updates by dispatching events
+    // Update Alpine state for every variable card using Alpine v3 public API.
+    // Alpine.$data(el) returns the reactive data object for an element with x-data.
     document.querySelectorAll('[x-data]').forEach(el => {
-        if (el._x_dataStack) {
-            el._x_dataStack[0].mode = mode;
+        try {
+            const data = Alpine.$data(el);
+            if (typeof data.mode !== 'undefined') {
+                data.mode = mode;
+            }
+        } catch (e) {
+            // Element may not have Alpine attached yet — safe to ignore
         }
     });
 }
