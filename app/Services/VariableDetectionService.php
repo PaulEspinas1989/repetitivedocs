@@ -73,8 +73,10 @@ class VariableDetectionService
                 // The legacy text_positions field keeps the first position for backward compat
                 $textPositions = !empty($allPositions) ? $allPositions : null;
 
-                // Merge AI-returned occurrence metadata if present
-                $aiOccurrences = $v['occurrences'] ?? [];
+                // Merge AI-returned occurrence metadata if present.
+                // Guard: AI may return "occurrences": 3 (integer) instead of an array;
+                // iterating over a non-array throws TypeError.
+                $aiOccurrences = is_array($v['occurrences'] ?? null) ? $v['occurrences'] : [];
 
                 $variable = TemplateVariable::create([
                     'template_id'         => $template->id,
@@ -390,8 +392,13 @@ class VariableDetectionService
                     continue;
                 }
 
-                $pw = $line[0]['page_width'];
-                $ph = $line[0]['page_height'];
+                $pw = (float) $line[0]['page_width'];
+                $ph = (float) $line[0]['page_height'];
+
+                // Skip if page dimensions are missing or zero (malformed PDF)
+                if ($pw <= 0 || $ph <= 0) {
+                    continue;
+                }
 
                 if ($isExactMatch) {
                     $left   = min(array_column($line, 'left'));
@@ -433,17 +440,19 @@ class VariableDetectionService
                     $textAlign = 'R';
                 }
 
+                // Clamp all percentage values to [0, 1] so malformed PDFs with
+                // text elements outside page bounds don't push overlay off-page.
                 $positions[] = [
                     'page'        => $pageNum,
-                    'x_pct'      => $left / $pw,
-                    'y_pct'      => $top  / $ph,
-                    'w_pct'      => ($right - $left) / $pw,
-                    'h_pct'      => ($bottom - $top) / $ph,
-                    'font_size'  => $dominantEl['font_size'],
-                    'font_color' => $dominantEl['font_color'],
+                    'x_pct'      => max(0, min(1, $left / $pw)),
+                    'y_pct'      => max(0, min(1, $top  / $ph)),
+                    'w_pct'      => max(0, min(1, ($right - $left) / $pw)),
+                    'h_pct'      => max(0, min(1, ($bottom - $top) / $ph)),
+                    'font_size'   => $dominantEl['font_size'],
+                    'font_color'  => $dominantEl['font_color'],
                     'font_family' => $dominantEl['font_family'] ?? '',
                     'font_weight' => $dominantEl['font_weight'] ?? 'normal',
-                    'text_align' => $textAlign,
+                    'text_align'  => $textAlign,
                 ];
                 // NOTE: no break — capture ALL matching lines on this page
             }

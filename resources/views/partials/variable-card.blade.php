@@ -68,6 +68,14 @@
             @if($var->description)
             <p class="text-xs text-muted mt-1">{{ $var->description }}</p>
             @endif
+            @php
+                $pages = collect($var->text_positions ?? [])->pluck('page')->unique()->filter()->sort()->values();
+            @endphp
+            @if($pages->isNotEmpty())
+            <p class="text-xs text-muted mt-1">
+                Page{{ $pages->count() > 1 ? 's' : '' }}: {{ $pages->implode(', ') }}
+            </p>
+            @endif
         </div>
 
         {{-- Action buttons --}}

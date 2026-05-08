@@ -16,21 +16,23 @@ class DocumentGenerationService
      */
     public function generate(Template $template, array $values): GeneratedDocument
     {
-        $template->load(['approvedVariables.activeOccurrences', 'uploadedDocument']);
-
+        $template->load(['uploadedDocument']);
         $doc = $template->uploadedDocument;
 
-        // For DOCX: do in-place XML replacement to preserve original formatting
         if ($doc && $doc->isDocx()) {
+            // DOCX path: only need variables, not position data
+            $template->load(['approvedVariables']);
             return $this->generateFromDocx($template, $doc, $values);
         }
 
-        // For PDF: use image-based overlay to preserve exact formatting
         if ($doc && $doc->isPdf()) {
+            // PDF overlay path: load occurrence position data for accurate placement
+            $template->load(['approvedVariables.activeOccurrences']);
             return $this->generateFromPdfOverlay($template, $doc, $values);
         }
 
-        // Fallback: build a structured HTML and convert to PDF
+        // Fallback HTML path
+        $template->load(['approvedVariables']);
         return $this->generateFromHtml($template, $values);
     }
 
@@ -96,7 +98,7 @@ class DocumentGenerationService
 
             foreach ($template->approvedVariables as $var) {
                 $newValue = $values[$var->name] ?? '';
-                if (($newValue === '' && $newValue !== '0') || empty($var->example_value)) continue;
+                if ($newValue === '' || $newValue === null || empty($var->example_value)) continue;
                 $xml = str_replace($var->example_value, $newValue, $xml);
                 $escaped = htmlspecialchars($var->example_value, ENT_XML1 | ENT_QUOTES);
                 if ($escaped !== $var->example_value) {

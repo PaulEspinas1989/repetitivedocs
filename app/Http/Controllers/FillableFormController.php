@@ -32,7 +32,9 @@ class FillableFormController extends Controller
     public function generate(Request $request, Template $template): RedirectResponse
     {
         $this->authorizeWorkspace($template);
-        $template->load(['approvedVariables' => fn($q) => $q->orderBy('sort_order')]);
+        // approvedVariables() relationship already has orderBy(sort_order) — no closure needed.
+        // The service will reload with occurrence data for the actual generation step.
+        $template->load(['approvedVariables']);
 
         // Build validation rules dynamically
         $rules = [];
