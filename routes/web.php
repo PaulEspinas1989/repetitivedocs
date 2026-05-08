@@ -58,7 +58,10 @@ Route::middleware(['auth', 'workspace'])->group(function () {
         if ((int) $template->workspace_id !== (int) auth()->user()->active_workspace_id) {
             abort(403);
         }
-        $template->load('variables');
+        $template->load(['variables' => fn($q) => $q->orderBy('sort_order')
+            ->select(['id','template_id','workspace_id','name','label','type',
+                      'example_value','approval_status','occurrences','is_required','sort_order','ai_suggested'])
+        ]);
         return view('automation-map', compact('template'));
     })->name('automation-map');
 
@@ -106,7 +109,10 @@ Route::middleware(['auth', 'workspace'])->group(function () {
         if ((int) $template->workspace_id !== (int) auth()->user()->active_workspace_id) {
             abort(403);
         }
-        $template->load('variables');
+        $template->load(['variables' => fn($q) => $q->orderBy('sort_order')
+            ->select(['id','template_id','workspace_id','name','label','type',
+                      'example_value','approval_status','occurrences','is_required','sort_order','ai_suggested'])
+        ]);
         return view('automation-map', compact('template'));
     })->name('templates.variables');
 

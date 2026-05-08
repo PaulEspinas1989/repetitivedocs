@@ -18,6 +18,20 @@
         ];
     @endphp
 
+    {{-- Toast feedback --}}
+    @if(session('toast'))
+    <div class="mb-6 flex items-center gap-3 p-3 bg-success/10 border border-success/20 rounded-xl text-sm text-success">
+        <x-icon name="check-circle" class="w-4 h-4 flex-shrink-0" />
+        {{ session('toast') }}
+    </div>
+    @endif
+    @if(session('error'))
+    <div class="mb-6 flex items-center gap-3 p-3 bg-danger/10 border border-danger/20 rounded-xl text-sm text-danger">
+        <x-icon name="alert-circle" class="w-4 h-4 flex-shrink-0" />
+        {{ session('error') }}
+    </div>
+    @endif
+
     {{-- Success icon --}}
     <div class="flex justify-center mb-8">
         <div class="w-24 h-24 bg-success/10 rounded-3xl flex items-center justify-center">
@@ -102,7 +116,7 @@
             </button>
         </form>
 
-        <a href="{{ route('templates.variables', $template->id) }}"
+        <a href="{{ route('templates.editor', $template->id) }}"
            class="bg-white rounded-2xl p-6 border-2 border-line hover:border-primary hover:shadow-lg transition-all text-left group block">
             <div class="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
                 <x-icon name="eye" class="w-6 h-6 text-primary" />
@@ -205,6 +219,35 @@
             @foreach ($standaloneVars as $var)
             @include('partials.variable-row', ['var' => $var, 'template' => $template])
             @endforeach
+        </div>
+    </div>
+    @endif
+
+    {{-- Proceed CTA — shown once all fields are approved --}}
+    @php
+        $totalVars    = $allVars->count();
+        $approvedVars = $allVars->where('approval_status', 'approved')->count();
+        $allApproved  = $totalVars > 0 && $approvedVars === $totalVars;
+        $anyApproved  = $approvedVars > 0;
+    @endphp
+
+    @if($anyApproved)
+    <div class="sticky bottom-6 mt-8">
+        <div class="bg-white border border-line rounded-2xl shadow-lg px-6 py-4 flex items-center justify-between gap-4">
+            <div>
+                @if($allApproved)
+                <p class="text-sm font-semibold text-navy">All {{ $totalVars }} fields approved!</p>
+                <p class="text-xs text-slate mt-0.5">Ready to generate your fillable form.</p>
+                @else
+                <p class="text-sm font-semibold text-navy">{{ $approvedVars }} of {{ $totalVars }} fields approved</p>
+                <p class="text-xs text-slate mt-0.5">You can generate a form with the approved fields, or keep reviewing.</p>
+                @endif
+            </div>
+            <a href="{{ route('fillable-form', $template->id) }}"
+               class="flex items-center gap-2 bg-primary text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:bg-primary-dark transition-colors flex-shrink-0">
+                <x-icon name="sparkles" class="w-4 h-4" />
+                Generate Form
+            </a>
         </div>
     </div>
     @endif

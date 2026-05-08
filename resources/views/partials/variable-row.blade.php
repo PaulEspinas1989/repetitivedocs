@@ -50,7 +50,8 @@
                 @csrf
                 <button type="submit"
                         class="flex items-center gap-1 px-2.5 py-1.5 bg-danger/10 text-danger text-xs font-medium rounded-lg hover:bg-danger/20 transition-colors"
-                        title="Reject">
+                        title="Reject this field"
+                        aria-label="Reject {{ $var->label }}">
                     <x-icon name="x" class="w-3.5 h-3.5" />
                 </button>
             </form>
@@ -58,7 +59,8 @@
                 @csrf
                 <button type="submit"
                         class="flex items-center gap-1 px-2.5 py-1.5 bg-blue-soft text-slate text-xs font-medium rounded-lg hover:bg-blue-light transition-colors"
-                        title="Move back to pending">
+                        title="Move back to pending"
+                        aria-label="Reset {{ $var->label }} to pending">
                     <x-icon name="arrow-left" class="w-3.5 h-3.5" />
                 </button>
             </form>
@@ -71,7 +73,8 @@
                 @csrf
                 <button type="submit"
                         class="flex items-center gap-1 px-2.5 py-1.5 bg-success/10 text-success text-xs font-medium rounded-lg hover:bg-success/20 transition-colors"
-                        title="Approve">
+                        title="Approve this field"
+                        aria-label="Approve {{ $var->label }}">
                     <x-icon name="check-circle" class="w-3.5 h-3.5" />
                 </button>
             </form>
@@ -79,7 +82,8 @@
                 @csrf
                 <button type="submit"
                         class="flex items-center gap-1 px-2.5 py-1.5 bg-blue-soft text-slate text-xs font-medium rounded-lg hover:bg-blue-light transition-colors"
-                        title="Move back to pending">
+                        title="Move back to pending"
+                        aria-label="Reset {{ $var->label }} to pending">
                     <x-icon name="arrow-left" class="w-3.5 h-3.5" />
                 </button>
             </form>

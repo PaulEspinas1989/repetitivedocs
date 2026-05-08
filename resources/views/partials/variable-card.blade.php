@@ -8,7 +8,7 @@
 @endphp
 
 <div class="rounded-2xl border-2 {{ $statusClasses }} p-5 transition-all"
-     x-data="{ editing: false, label: {{ json_encode($var->label) }}, type: {{ json_encode($var->type) }} }">
+     x-data="{ editing: {{ $errors->any() ? 'true' : 'false' }}, label: {{ json_encode($var->label) }}, type: {{ json_encode($var->type) }} }">
 
     {{-- View mode --}}
     <div x-show="!editing">
@@ -127,6 +127,14 @@
 
     {{-- Edit mode --}}
     <div x-show="editing" x-cloak>
+        {{-- Validation errors scoped to this variable --}}
+        @if($errors->any())
+        <div class="mb-3 p-3 bg-danger/10 border border-danger/20 rounded-xl text-xs text-danger">
+            @foreach($errors->all() as $error)
+            <p>{{ $error }}</p>
+            @endforeach
+        </div>
+        @endif
         <div class="flex items-center justify-between mb-4">
             <h4 class="text-sm font-semibold text-navy">Edit Field</h4>
             <button type="button" @click="editing = false"
