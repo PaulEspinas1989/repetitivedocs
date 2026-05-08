@@ -289,14 +289,17 @@ class VariableDetectionService
                     $bottom = max(array_map(fn($e) => $e['top'] + $e['height'], $line));
                 }
 
+                // Use the largest font size on the line — most likely the value element
+                $dominantEl = collect($line)->sortByDesc('font_size')->first();
+
                 $positions[] = [
                     'page'       => $pageNum,
                     'x_pct'      => $left / $pw,
                     'y_pct'      => $top  / $ph,
                     'w_pct'      => ($right - $left) / $pw,
                     'h_pct'      => ($bottom - $top) / $ph,
-                    'font_size'  => $line[0]['font_size'],
-                    'font_color' => $line[0]['font_color'],
+                    'font_size'  => $dominantEl['font_size'],
+                    'font_color' => $dominantEl['font_color'],
                 ];
 
                 // Stop after finding the first clear match per page to avoid false duplicates

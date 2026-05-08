@@ -184,10 +184,11 @@ class DocumentGenerationService
                 $pdf->Image($imgPath, 0, 0, $pageMmW, $pageMmH);
 
                 foreach ($template->approvedVariables as $var) {
-                    $newValue  = $values[$var->name] ?? '';
+                    $newValue  = $values[$var->name] ?? null;
                     $positions = $var->text_positions;
 
-                    if (empty($newValue) || empty($positions)) {
+                    // empty() returns true for "0" in PHP — use explicit check
+                    if ($newValue === null || $newValue === '' || empty($positions)) {
                         continue;
                     }
 
@@ -199,7 +200,11 @@ class DocumentGenerationService
                         // Map percentage coords to this page's actual mm dimensions
                         $x = (float) $pos['x_pct'] * $pageMmW;
                         $y = (float) $pos['y_pct'] * $pageMmH;
-                        $w = max((float) $pos['w_pct'] * $pageMmW, 8);
+                        // Minimum width based on font size (approx 0.6mm per pt) to avoid
+                        // overflowing into adjacent content while still fitting the new value
+                        $fontSize  = max((float) ($pos['font_size'] ?? 10), 6);
+                        $minW      = $fontSize * 0.6;
+                        $w = max((float) $pos['w_pct'] * $pageMmW, $minW);
                         $h = max((float) $pos['h_pct'] * $pageMmH, 3);
 
                         // Erase old text with white rectangle
@@ -222,12 +227,14 @@ class DocumentGenerationService
                             $pdf->SetTextColor(0, 0, 0);
                         }
 
-                        $fontSize = max((float) ($pos['font_size'] ?? 10), 6);
                         $pdf->SetFont('Helvetica', '', $fontSize);
                         $pdf->SetXY($x, $y);
 
-                        // FPDF requires ISO-8859-1; convert UTF-8 input safely
-                        $display = @iconv('UTF-8', 'ISO-8859-1//TRANSLIT', $newValue) ?: $newValue;
+                        // FPDF requires ISO-8859-1; convert UTF-8 safely.
+                        // Use !== false check (not ?:) so an empty-string result doesn't
+                        // fall back to raw UTF-8 which FPDF cannot render.
+                        $converted = @iconv('UTF-8', 'ISO-8859-1//TRANSLIT', $newValue);
+                        $display   = ($converted !== false) ? $converted : $newValue;
                         $pdf->Cell($w, $h, $display, 0, 0, 'L');
                     }
                 }
