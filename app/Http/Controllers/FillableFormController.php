@@ -15,11 +15,12 @@ class FillableFormController extends Controller
 {
     public function __construct(private DocumentGenerationService $generator) {}
 
-    public function show(Template $template): View
+    // Return type is View|RedirectResponse — redirect fires if no approved variables
+    public function show(Template $template): View|RedirectResponse
     {
         $this->authorizeWorkspace($template);
 
-        $template->load(['approvedVariables' => fn($q) => $q->orderBy('sort_order')]);
+        $template->load(['approvedVariables']);
 
         if ($template->approvedVariables->isEmpty()) {
             return redirect()->route('templates.editor', $template->id)
@@ -32,11 +33,11 @@ class FillableFormController extends Controller
     public function generate(Request $request, Template $template): RedirectResponse
     {
         $this->authorizeWorkspace($template);
-        // approvedVariables() relationship already has orderBy(sort_order) — no closure needed.
-        // The service will reload with occurrence data for the actual generation step.
+        // approvedVariables() already orders by sort_order — no closure needed here.
+        // The generator service reloads with activeOccurrences for the PDF path.
         $template->load(['approvedVariables']);
 
-        // Build validation rules dynamically
+        // Build validation rules dynamically from approved variable types
         $rules = [];
         foreach ($template->approvedVariables as $var) {
             $rule = $var->is_required ? ['required', 'string', 'max:500'] : ['nullable', 'string', 'max:500'];
@@ -45,7 +46,6 @@ class FillableFormController extends Controller
             } elseif ($var->type === 'date') {
                 $rule = $var->is_required ? ['required', 'date'] : ['nullable', 'date'];
             } elseif ($var->type === 'number') {
-                // number fields use HTML number input — validate as numeric
                 $rule = $var->is_required ? ['required', 'numeric'] : ['nullable', 'numeric'];
             }
             // currency stays as string — user may enter "1,000,000" with commas
@@ -55,7 +55,7 @@ class FillableFormController extends Controller
         $validated = $request->validate($rules);
         $values    = $validated['fields'] ?? [];
 
-        // Sanitize currency fields: strip peso sign and commas so they store as plain numbers
+        // Strip peso sign and commas from currency fields so generation stores plain numbers
         foreach ($template->approvedVariables as $var) {
             if ($var->type === 'currency' && isset($values[$var->name])) {
                 $values[$var->name] = preg_replace('/[₱,\s]/', '', $values[$var->name]);
@@ -72,10 +72,7 @@ class FillableFormController extends Controller
 
     public function download(GeneratedDocument $generated): StreamedResponse
     {
-        $ids = auth()->user()->workspaces()->pluck('workspaces.id')->toArray();
-        if (!in_array($generated->workspace_id, $ids)) {
-            abort(403);
-        }
+        $this->authorizeGeneratedDocument($generated);
 
         return Storage::disk($generated->disk)->download(
             $generated->file_path,
@@ -93,7 +90,7 @@ class FillableFormController extends Controller
         }
     }
 
-    private function authorizeWorkspaceForDoc(GeneratedDocument $document): void
+    private function authorizeGeneratedDocument(GeneratedDocument $document): void
     {
         $ids = auth()->user()->workspaces()->pluck('workspaces.id')->toArray();
         if (!in_array($document->workspace_id, $ids)) {

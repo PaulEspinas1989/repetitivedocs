@@ -429,7 +429,9 @@ class VariableDetectionService
                     $bottom = max(array_map(fn($e) => $e['top'] + $e['height'], $line));
                 }
 
-                $dominantEl = collect($line)->sortByDesc('font_size')->first();
+                // Safety: first() returns null only for empty collections; $line always has ≥1 element
+                // (initialized with [$el] in the grouping loop above), but guard anyway.
+                $dominantEl = collect($line)->sortByDesc('font_size')->first() ?? $line[0];
 
                 // Detect text alignment from horizontal position on the page
                 $centerOfText = ($left + $right) / 2;
