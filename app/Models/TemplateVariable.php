@@ -58,6 +58,10 @@ class TemplateVariable extends Model
     /**
      * Return all overlay positions — prefers VariableOccurrence records (richer data),
      * falls back to the legacy text_positions JSON array.
+     *
+     * Legacy text_positions rows have keys: page, x_pct, y_pct, w_pct, h_pct, font_size, font_color.
+     * They may be missing text_align, font_family, font_weight — fill defaults so the
+     * generation engine never sees missing keys.
      */
     public function resolveOverlayPositions(): array
     {
@@ -69,7 +73,21 @@ class TemplateVariable extends Model
                 ->all();
         }
 
-        return $this->text_positions ?? [];
+        // Normalise legacy positions to guarantee all keys exist
+        return collect($this->text_positions ?? [])
+            ->map(fn($pos) => [
+                'page'        => (int)    ($pos['page']        ?? 1),
+                'x_pct'      => (float)  ($pos['x_pct']       ?? 0),
+                'y_pct'      => (float)  ($pos['y_pct']        ?? 0),
+                'w_pct'      => (float)  ($pos['w_pct']        ?? 0),
+                'h_pct'      => (float)  ($pos['h_pct']        ?? 0),
+                'font_size'   => (float)  ($pos['font_size']   ?? 10),
+                'font_color'  => (string) ($pos['font_color']  ?? '#000000'),
+                'font_family' => (string) ($pos['font_family'] ?? ''),
+                'font_weight' => (string) ($pos['font_weight'] ?? 'normal'),
+                'text_align'  => (string) ($pos['text_align']  ?? 'L'),
+            ])
+            ->all();
     }
 
     public function typeBadgeColor(): string

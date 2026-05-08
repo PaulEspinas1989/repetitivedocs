@@ -13,7 +13,7 @@
                 <p class="text-sm text-slate mt-0.5">{{ $template->name }}</p>
             </div>
         </div>
-        <p class="text-slate text-sm ml-8">Loopi created this form from your template variables</p>
+        <p class="text-slate text-sm ml-8">Loopi detected these fields from your document</p>
     </div>
 
     @if(session('error'))

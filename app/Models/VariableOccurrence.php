@@ -45,15 +45,25 @@ class VariableOccurrence extends Model
     /** Return position array for the PDF overlay engine. */
     public function toOverlayPosition(): ?array
     {
-        if (empty($this->bounding_box)) {
+        $bbox = $this->bounding_box;
+        if (empty($bbox) || !isset($bbox['x_pct'])) {
             return null;
         }
 
-        return array_merge($this->bounding_box, [
-            'page'       => $this->page_number,
-            'font_size'  => $this->style_snapshot['font_size']  ?? 10,
-            'font_color' => $this->style_snapshot['font_color'] ?? '#000000',
-            'text_align' => $this->style_snapshot['text_align'] ?? 'L',
-        ]);
+        // Cast guarantees null → [] but be explicit to survive future cast changes
+        $style = $this->style_snapshot ?: [];
+
+        return [
+            'page'        => $this->page_number ?? 1,
+            'x_pct'      => (float) ($bbox['x_pct'] ?? 0),
+            'y_pct'      => (float) ($bbox['y_pct'] ?? 0),
+            'w_pct'      => (float) ($bbox['w_pct'] ?? 0),
+            'h_pct'      => (float) ($bbox['h_pct'] ?? 0),
+            'font_size'   => (float) ($style['font_size']  ?? 10),
+            'font_color'  => (string) ($style['font_color'] ?? '#000000'),
+            'font_family' => (string) ($style['font_family'] ?? ''),
+            'font_weight' => (string) ($style['font_weight'] ?? 'normal'),
+            'text_align'  => (string) ($style['text_align']  ?? 'L'),
+        ];
     }
 }

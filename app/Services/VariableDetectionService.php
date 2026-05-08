@@ -135,7 +135,8 @@ class VariableDetectionService
         array $aiOccurrences,
         ?string $exampleValue
     ): void {
-        // If we have AI-returned occurrence metadata, use it to enrich position records
+        // Index AI occurrence metadata by page so we can match each PDF position to its AI metadata.
+        // Using references on $aiByPage so array_shift() correctly advances the pointer for each page.
         $aiByPage = [];
         foreach ($aiOccurrences as $occ) {
             $page = $occ['page_number'] ?? null;
@@ -144,9 +145,17 @@ class VariableDetectionService
 
         if (!empty($pdfPositions)) {
             foreach ($pdfPositions as $pos) {
-                $page   = $pos['page'] ?? null;
-                $aiMeta = $aiByPage[$page] ?? $aiByPage['any'] ?? [];
-                $ai     = !empty($aiMeta) ? array_shift($aiMeta) : [];
+                $page = $pos['page'] ?? null;
+
+                // Pop the next AI occurrence for this page (or from the 'any' pool).
+                // Use array_shift directly on $aiByPage entries so each position
+                // consumes a different AI occurrence instead of all getting the same first one.
+                $ai = [];
+                if (!empty($aiByPage[$page])) {
+                    $ai = array_shift($aiByPage[$page]);
+                } elseif (!empty($aiByPage['any'])) {
+                    $ai = array_shift($aiByPage['any']);
+                }
 
                 VariableOccurrence::create([
                     'template_variable_id' => $variable->id,

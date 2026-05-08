@@ -191,16 +191,22 @@ class DocumentGenerationService
                     }
 
                     foreach ($positions as $pos) {
-                        if ((int) ($pos['page'] ?? 0) !== $pageNum) {
+                        // Legacy text_positions use 'page' key (1-indexed).
+                        // Occurrence-based positions also use 'page' via toOverlayPosition().
+                        // Default to 1 (not 0) so single-page docs without an explicit page key still render.
+                        $posPage = (int) ($pos['page'] ?? 1);
+                        if ($posPage !== $pageNum) {
                             continue;
                         }
 
-                        $fontSize = max((float) ($pos['font_size'] ?? 10), 6);
+                        // Cap font size to a sane range — malformed PDFs can report huge values
+                        $fontSize = max(min((float) ($pos['font_size'] ?? 10), 150), 6);
 
                         // Map percentage coordinates to mm
                         $x = (float) $pos['x_pct'] * $pageMmW;
                         $y = (float) $pos['y_pct'] * $pageMmH;
-                        $w = max((float) $pos['w_pct'] * $pageMmW, $fontSize * 0.5);
+                        // Minimum width: enough for ~10 chars at this font size (avoids hairline boxes)
+                        $w = max((float) $pos['w_pct'] * $pageMmW, $fontSize * 1.8);
 
                         // Height: use exactly the detected text height (pt → mm).
                         // Capping to font-size-based height prevents the white erasure
