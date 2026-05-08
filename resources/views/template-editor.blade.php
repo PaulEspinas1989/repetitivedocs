@@ -4,7 +4,7 @@
     {{-- ── Top bar ────────────────────────────────────────────── --}}
     <div class="bg-white border-b border-line px-6 py-4 flex items-center justify-between flex-shrink-0">
         <div class="flex items-center gap-3 min-w-0">
-            <a href="{{ route('dashboard') }}" class="text-muted hover:text-navy transition-colors flex-shrink-0">
+            <a href="{{ route('automation-map', $template->id) }}" class="text-muted hover:text-navy transition-colors flex-shrink-0" title="Back to Automation Map">
                 <x-icon name="arrow-left" class="w-5 h-5" />
             </a>
             <div class="min-w-0">
@@ -25,6 +25,7 @@
                class="flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-primary-dark transition-colors">
                 <x-icon name="sparkles" class="w-4 h-4" />
                 Generate Form
+                <span class="bg-white/20 text-white text-xs px-1.5 py-0.5 rounded-md">{{ $approved->count() }}</span>
             </a>
             @endif
         </div>
@@ -90,9 +91,30 @@
                     @endphp
                     @if($pending->isEmpty())
                     <div class="flex flex-col items-center py-16 text-center">
-                        <x-icon name="check-circle" class="w-12 h-12 text-success mb-4" />
-                        <p class="font-semibold text-navy">All fields reviewed!</p>
-                        <p class="text-sm text-slate mt-1">No pending fields left.</p>
+                        @if($approved->count() > 0)
+                            <x-icon name="check-circle" class="w-12 h-12 text-success mb-4" />
+                            <p class="font-semibold text-navy">All fields reviewed!</p>
+                            <p class="text-sm text-slate mt-1">{{ $approved->count() }} field{{ $approved->count() === 1 ? '' : 's' }} approved and ready.</p>
+                            <a href="{{ route('fillable-form', $template->id) }}"
+                               class="mt-5 flex items-center gap-2 bg-primary text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:bg-primary-dark transition-colors">
+                                <x-icon name="sparkles" class="w-4 h-4" />
+                                Generate Fillable Form
+                            </a>
+                        @else
+                            <x-icon name="alert-circle" class="w-12 h-12 text-warning mb-4" />
+                            <p class="font-semibold text-navy">All fields rejected</p>
+                            <p class="text-sm text-slate mt-1 max-w-xs">Switch to the Rejected tab to approve some fields, or go back to the automation map to re-analyse.</p>
+                            <div class="flex gap-3 mt-5">
+                                <button @click="activeTab = 'rejected'"
+                                        class="flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-primary-dark transition-colors">
+                                    View Rejected Fields
+                                </button>
+                                <a href="{{ route('automation-map', $template->id) }}"
+                                   class="flex items-center gap-2 border border-line text-slate px-4 py-2 rounded-xl text-sm font-medium hover:border-primary hover:text-navy transition-colors">
+                                    Back to Map
+                                </a>
+                            </div>
+                        @endif
                     </div>
                     @else
                         @if($pendingRepeating->isNotEmpty())
@@ -266,7 +288,13 @@
                     @if($pending->count() > 0)
                     <li class="flex items-center gap-2">
                         <div class="w-4 h-4 rounded-full border-2 border-white flex-shrink-0"></div>
-                        {{ $pending->count() }} fields need review
+                        {{ $pending->count() }} pending review
+                    </li>
+                    @endif
+                    @if($rejected->count() > 0)
+                    <li class="flex items-center gap-2 text-white/70">
+                        <x-icon name="x" class="w-4 h-4" />
+                        {{ $rejected->count() }} rejected
                     </li>
                     @endif
                 </ul>
@@ -279,6 +307,15 @@
                 <x-icon name="sparkles" class="w-5 h-5" />
                 Generate Fillable Form
             </a>
+            @elseif($rejected->count() > 0 && $pending->count() === 0)
+            {{-- All fields rejected — guide the user --}}
+            <div class="p-4 bg-warning/10 border border-warning/30 rounded-xl text-sm">
+                <p class="font-semibold text-navy mb-1 flex items-center gap-2">
+                    <x-icon name="alert-circle" class="w-4 h-4 text-warning" />
+                    All fields rejected
+                </p>
+                <p class="text-xs text-slate">Switch to the <strong>Rejected</strong> tab and approve at least one field to generate a form.</p>
+            </div>
             @else
             <div class="flex items-center justify-center gap-2 w-full bg-line text-muted py-3 rounded-xl font-semibold text-sm cursor-not-allowed">
                 <x-icon name="sparkles" class="w-5 h-5" />

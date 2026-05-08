@@ -70,9 +70,10 @@ Route::middleware(['auth', 'workspace'])->group(function () {
         if ((int) $template->workspace_id !== (int) auth()->user()->active_workspace_id) {
             abort(403);
         }
-        $template->variables()->update(['approval_status' => 'approved']);
+        // Only approve PENDING — do not override intentional rejections
+        $template->variables()->where('approval_status', 'pending')->update(['approval_status' => 'approved']);
         return redirect()->route('templates.editor', $template->id)
-            ->with('toast', 'All fields approved. Ready to generate your form.');
+            ->with('toast', 'All pending fields approved. Ready to generate your form.');
     })->name('templates.approve-all');
 
     // ── Group approve/reject (repeating or standalone) ────────

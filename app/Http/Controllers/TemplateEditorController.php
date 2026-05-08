@@ -34,7 +34,7 @@ class TemplateEditorController extends Controller
         $variable->update(['approval_status' => 'approved']);
         $this->syncReadiness($template);
 
-        return back()->with('toast', 'Variable approved.');
+        return back()->with('toast', '"' . $variable->label . '" approved.');
     }
 
     public function rejectVariable(Template $template, TemplateVariable $variable): RedirectResponse
@@ -45,7 +45,7 @@ class TemplateEditorController extends Controller
         $variable->update(['approval_status' => 'rejected']);
         $this->syncReadiness($template);
 
-        return back()->with('toast', 'Variable rejected.');
+        return back()->with('toast', '"' . $variable->label . '" rejected.');
     }
 
     public function updateVariable(Request $request, Template $template, TemplateVariable $variable): RedirectResponse
@@ -84,7 +84,7 @@ class TemplateEditorController extends Controller
         $variable->update(['approval_status' => 'pending']);
         $this->syncReadiness($template);
 
-        return back()->with('toast', 'Variable moved back to pending.');
+        return back()->with('toast', '"' . $variable->label . '" moved back to pending.');
     }
 
     public function approveAll(Template $template): RedirectResponse
