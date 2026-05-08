@@ -100,6 +100,7 @@ Route::middleware(['auth', 'workspace'])->group(function () {
     // ── Variable actions ──────────────────────────────────────
     Route::post('/templates/{template}/variables/{variable}/approve', [TemplateEditorController::class, 'approveVariable'])->name('templates.variables.approve');
     Route::post('/templates/{template}/variables/{variable}/reject',  [TemplateEditorController::class, 'rejectVariable'])->name('templates.variables.reject');
+    Route::post('/templates/{template}/variables/{variable}/undo',    [TemplateEditorController::class, 'undoVariable'])->name('templates.variables.undo');
     Route::patch('/templates/{template}/variables/{variable}',        [TemplateEditorController::class, 'updateVariable'])->name('templates.variables.update');
 
     // ── Fillable form ─────────────────────────────────────────

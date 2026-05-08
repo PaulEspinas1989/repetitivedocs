@@ -80,44 +80,141 @@
             </div>
 
             {{-- Variable cards --}}
-            <div class="flex-1 overflow-y-auto p-6 space-y-3">
+            <div class="flex-1 overflow-y-auto p-6">
+
+                @php
+                    // Helper: render a group section with a label
+                    $renderGroup = function($vars, $groupLabel, $icon, $color) use ($template) {
+                        // used inline below
+                    };
+                @endphp
 
                 {{-- Pending tab --}}
                 <div x-show="activeTab === 'pending'">
-                    @forelse($pending as $var)
-                    @include('partials.variable-card', ['var' => $var, 'template' => $template])
-                    @empty
+                    @php
+                        $pendingRepeating  = $pending->filter(fn($v) => ($v->occurrences ?? 1) > 1);
+                        $pendingStandalone = $pending->filter(fn($v) => ($v->occurrences ?? 1) === 1);
+                    @endphp
+                    @if($pending->isEmpty())
                     <div class="flex flex-col items-center py-16 text-center">
                         <x-icon name="check-circle" class="w-12 h-12 text-success mb-4" />
                         <p class="font-semibold text-navy">All fields reviewed!</p>
                         <p class="text-sm text-slate mt-1">No pending fields left.</p>
                     </div>
-                    @endforelse
+                    @else
+                        @if($pendingRepeating->isNotEmpty())
+                        <div class="mb-2">
+                            <p class="text-xs font-semibold text-primary uppercase tracking-wide mb-3 flex items-center gap-2">
+                                <span class="w-2 h-2 rounded-full bg-primary inline-block"></span>
+                                Repeating ({{ $pendingRepeating->count() }})
+                            </p>
+                            <div class="space-y-3">
+                                @foreach($pendingRepeating as $var)
+                                @include('partials.variable-card', ['var' => $var, 'template' => $template])
+                                @endforeach
+                            </div>
+                        </div>
+                        @endif
+                        @if($pendingStandalone->isNotEmpty())
+                        <div class="{{ $pendingRepeating->isNotEmpty() ? 'mt-6' : '' }}">
+                            <p class="text-xs font-semibold text-slate uppercase tracking-wide mb-3 flex items-center gap-2">
+                                <span class="w-2 h-2 rounded-full bg-slate inline-block"></span>
+                                Standalone ({{ $pendingStandalone->count() }})
+                            </p>
+                            <div class="space-y-3">
+                                @foreach($pendingStandalone as $var)
+                                @include('partials.variable-card', ['var' => $var, 'template' => $template])
+                                @endforeach
+                            </div>
+                        </div>
+                        @endif
+                    @endif
                 </div>
 
                 {{-- Approved tab --}}
                 <div x-show="activeTab === 'approved'">
-                    @forelse($approved as $var)
-                    @include('partials.variable-card', ['var' => $var, 'template' => $template])
-                    @empty
+                    @php
+                        $approvedRepeating  = $approved->filter(fn($v) => ($v->occurrences ?? 1) > 1);
+                        $approvedStandalone = $approved->filter(fn($v) => ($v->occurrences ?? 1) === 1);
+                    @endphp
+                    @if($approved->isEmpty())
                     <p class="text-sm text-muted text-center py-12">No approved fields yet.</p>
-                    @endforelse
+                    @else
+                        @if($approvedRepeating->isNotEmpty())
+                        <div class="mb-2">
+                            <p class="text-xs font-semibold text-primary uppercase tracking-wide mb-3 flex items-center gap-2">
+                                <span class="w-2 h-2 rounded-full bg-primary inline-block"></span>
+                                Repeating ({{ $approvedRepeating->count() }})
+                            </p>
+                            <div class="space-y-3">
+                                @foreach($approvedRepeating as $var)
+                                @include('partials.variable-card', ['var' => $var, 'template' => $template])
+                                @endforeach
+                            </div>
+                        </div>
+                        @endif
+                        @if($approvedStandalone->isNotEmpty())
+                        <div class="{{ $approvedRepeating->isNotEmpty() ? 'mt-6' : '' }}">
+                            <p class="text-xs font-semibold text-slate uppercase tracking-wide mb-3 flex items-center gap-2">
+                                <span class="w-2 h-2 rounded-full bg-slate inline-block"></span>
+                                Standalone ({{ $approvedStandalone->count() }})
+                            </p>
+                            <div class="space-y-3">
+                                @foreach($approvedStandalone as $var)
+                                @include('partials.variable-card', ['var' => $var, 'template' => $template])
+                                @endforeach
+                            </div>
+                        </div>
+                        @endif
+                    @endif
                 </div>
 
                 {{-- Rejected tab --}}
                 <div x-show="activeTab === 'rejected'">
-                    @forelse($rejected as $var)
-                    @include('partials.variable-card', ['var' => $var, 'template' => $template])
-                    @empty
+                    @if($rejected->isEmpty())
                     <p class="text-sm text-muted text-center py-12">No rejected fields.</p>
-                    @endforelse
+                    @else
+                    <div class="space-y-3">
+                        @foreach($rejected as $var)
+                        @include('partials.variable-card', ['var' => $var, 'template' => $template])
+                        @endforeach
+                    </div>
+                    @endif
                 </div>
 
                 {{-- All tab --}}
                 <div x-show="activeTab === 'all'">
-                    @foreach($pending->concat($approved)->concat($rejected) as $var)
-                    @include('partials.variable-card', ['var' => $var, 'template' => $template])
-                    @endforeach
+                    @php $allVars = $pending->concat($approved)->concat($rejected); @endphp
+                    @php
+                        $allRepeating  = $allVars->filter(fn($v) => ($v->occurrences ?? 1) > 1);
+                        $allStandalone = $allVars->filter(fn($v) => ($v->occurrences ?? 1) === 1);
+                    @endphp
+                    @if($allRepeating->isNotEmpty())
+                    <div class="mb-2">
+                        <p class="text-xs font-semibold text-primary uppercase tracking-wide mb-3 flex items-center gap-2">
+                            <span class="w-2 h-2 rounded-full bg-primary inline-block"></span>
+                            Repeating ({{ $allRepeating->count() }})
+                        </p>
+                        <div class="space-y-3">
+                            @foreach($allRepeating as $var)
+                            @include('partials.variable-card', ['var' => $var, 'template' => $template])
+                            @endforeach
+                        </div>
+                    </div>
+                    @endif
+                    @if($allStandalone->isNotEmpty())
+                    <div class="{{ $allRepeating->isNotEmpty() ? 'mt-6' : '' }}">
+                        <p class="text-xs font-semibold text-slate uppercase tracking-wide mb-3 flex items-center gap-2">
+                            <span class="w-2 h-2 rounded-full bg-slate inline-block"></span>
+                            Standalone ({{ $allStandalone->count() }})
+                        </p>
+                        <div class="space-y-3">
+                            @foreach($allStandalone as $var)
+                            @include('partials.variable-card', ['var' => $var, 'template' => $template])
+                            @endforeach
+                        </div>
+                    </div>
+                    @endif
                 </div>
 
             </div>

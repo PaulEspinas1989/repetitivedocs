@@ -65,6 +65,16 @@ class TemplateEditorController extends Controller
         return back()->with('toast', 'Variable updated.');
     }
 
+    public function undoVariable(Template $template, TemplateVariable $variable): RedirectResponse
+    {
+        $this->authorizeWorkspace($template);
+
+        $variable->update(['approval_status' => 'pending']);
+        $this->syncReadiness($template);
+
+        return back()->with('toast', 'Variable moved back to pending.');
+    }
+
     public function approveAll(Template $template): RedirectResponse
     {
         $this->authorizeWorkspace($template);
