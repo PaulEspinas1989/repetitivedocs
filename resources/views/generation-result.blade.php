@@ -48,10 +48,14 @@
         <div class="space-y-4">
 
             {{-- Download --}}
+            @php
+                $isDocx = str_ends_with(strtolower($generated->file_name ?? ''), '.docx');
+                $downloadLabel = $isDocx ? 'Download Word Document' : 'Download PDF';
+            @endphp
             <a href="{{ route('generated-documents.download', $generated->id) }}"
                class="flex items-center justify-center gap-3 w-full bg-primary text-white py-4 rounded-2xl font-semibold hover:bg-primary-dark transition-colors">
                 <x-icon name="download" class="w-5 h-5" />
-                Download PDF
+                {{ $downloadLabel }}
             </a>
 
             {{-- Generate another --}}

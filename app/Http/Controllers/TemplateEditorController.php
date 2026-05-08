@@ -17,7 +17,8 @@ class TemplateEditorController extends Controller
         $template->load(['variables' => fn($q) => $q
             ->select(['id','template_id','workspace_id','name','label','type',
                       'description','example_value','approval_status',
-                      'occurrences','is_required','sort_order','ai_suggested'])
+                      'occurrences','is_required','sort_order','ai_suggested',
+                      'text_positions']) // needed for page-number display in variable-card
             ->orderBy('sort_order')
         ]);
         $this->syncReadiness($template);
@@ -120,9 +121,9 @@ class TemplateEditorController extends Controller
 
     private function syncReadiness(Template $template): void
     {
-        $base     = $template->variables();
-        $total    = $base->count();
-        $approved = (clone $base)->where('approval_status', 'approved')->count();
+        // Two fresh queries — avoids shallow-clone issues with shared Eloquent query builders
+        $total    = $template->variables()->count();
+        $approved = $template->variables()->where('approval_status', 'approved')->count();
 
         $score = $total > 0 ? (int) round(($approved / $total) * 100) : 0;
 
