@@ -1,0 +1,43 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/paulg/**)",
+      "PowerShell(composer --version)",
+      "PowerShell(php --version)",
+      "Read(//c/laragon/**)",
+      "PowerShell($php = \"C:\\\\laragon\\\\bin\\\\php\\\\php-8.3.30-Win32-vs16-x64\\\\php.exe\"; $composer = \"C:\\\\laragon\\\\bin\\\\composer\\\\composer.bat\"; & $php \"$\\($composer -replace '\\\\.bat$', '.phar'\\)\" create-project laravel/laravel \"C:\\\\Users\\\\paulg\\\\OneDrive\\\\Desktop\\\\repetitivedocs.com\" --no-interaction 2>&1 | Select-Object -First 5)",
+      "PowerShell(& \"C:\\\\laragon\\\\bin\\\\composer\\\\composer.bat\" create-project laravel/laravel \"C:\\\\Users\\\\paulg\\\\OneDrive\\\\Desktop\\\\repetitivedocs.com\\\\_tmp\" --no-interaction 2>&1)",
+      "PowerShell($env:PATH = \"C:\\\\laragon\\\\bin\\\\php\\\\php-8.3.30-Win32-vs16-x64;\" + $env:PATH; & \"C:\\\\laragon\\\\bin\\\\php\\\\php-8.3.30-Win32-vs16-x64\\\\php.exe\" \"C:\\\\laragon\\\\bin\\\\composer\\\\composer.phar\" create-project laravel/laravel \"C:\\\\Users\\\\paulg\\\\OneDrive\\\\Desktop\\\\repetitivedocs.com\\\\_tmp\" --no-interaction 2>&1)",
+      "PowerShell(Get-ChildItem \"C:\\\\Users\\\\paulg\\\\OneDrive\\\\Desktop\\\\repetitivedocs.com\\\\_tmp\" -Force | ForEach-Object { Move-Item $_.FullName \"C:\\\\Users\\\\paulg\\\\OneDrive\\\\Desktop\\\\repetitivedocs.com\\\\\" -Force -ErrorAction SilentlyContinue }; Remove-Item \"C:\\\\Users\\\\paulg\\\\OneDrive\\\\Desktop\\\\repetitivedocs.com\\\\_tmp\" -Recurse -Force -ErrorAction SilentlyContinue)",
+      "PowerShell($env:PATH = \"C:\\\\laragon\\\\bin\\\\php\\\\php-8.3.30-Win32-vs16-x64;\" + $env:PATH; & \"C:\\\\laragon\\\\bin\\\\php\\\\php-8.3.30-Win32-vs16-x64\\\\php.exe\" \"C:\\\\laragon\\\\bin\\\\composer\\\\composer.phar\" require laravel/sanctum --working-dir=\"C:\\\\Users\\\\paulg\\\\OneDrive\\\\Desktop\\\\repetitivedocs.com\" --no-interaction 2>&1)",
+      "PowerShell($env:PATH = \"C:\\\\laragon\\\\bin\\\\php\\\\php-8.3.30-Win32-vs16-x64;\" + $env:PATH; & \"C:\\\\laragon\\\\bin\\\\php\\\\php-8.3.30-Win32-vs16-x64\\\\php.exe\" \"C:\\\\Users\\\\paulg\\\\OneDrive\\\\Desktop\\\\repetitivedocs.com\\\\artisan\" --version 2>&1)",
+      "PowerShell(& \"C:\\\\laragon\\\\bin\\\\php\\\\php-8.3.30-Win32-vs16-x64\\\\php.exe\" -v 2>&1)",
+      "PowerShell(Get-ChildItem \"C:\\\\Users\\\\paulg\\\\OneDrive\\\\Desktop\\\\repetitivedocs.com\\\\app\" -Recurse -Force | Select-Object FullName | ForEach-Object { $_.FullName.Replace\\(\"C:\\\\Users\\\\paulg\\\\OneDrive\\\\Desktop\\\\repetitivedocs.com\\\\\", \"\"\\) })",
+      "PowerShell(Get-ChildItem \"C:\\\\Users\\\\paulg\\\\OneDrive\\\\Desktop\\\\repetitivedocs.com\\\\database\" -Recurse | Select-Object FullName | ForEach-Object { $_.FullName.Replace\\(\"C:\\\\Users\\\\paulg\\\\OneDrive\\\\Desktop\\\\repetitivedocs.com\\\\\", \"\"\\) })",
+      "PowerShell(Get-ChildItem \"C:\\\\Users\\\\paulg\\\\OneDrive\\\\Desktop\\\\repetitivedocs.com\\\\resources\" -Recurse | Select-Object FullName | ForEach-Object { $_.FullName.Replace\\(\"C:\\\\Users\\\\paulg\\\\OneDrive\\\\Desktop\\\\repetitivedocs.com\\\\\", \"\"\\) })",
+      "PowerShell($env:PATH = \"C:\\\\laragon\\\\bin\\\\nodejs;\" + $env:PATH; Set-Location \"C:\\\\Users\\\\paulg\\\\OneDrive\\\\Desktop\\\\repetitivedocs.com\"; npm install 2>&1)",
+      "PowerShell($env:PATH = \"C:\\\\laragon\\\\bin\\\\nodejs;\" + $env:PATH; & \"C:\\\\laragon\\\\bin\\\\nodejs\\\\npm.cmd\" install --prefix \"C:\\\\Users\\\\paulg\\\\OneDrive\\\\Desktop\\\\repetitivedocs.com\" 2>&1)",
+      "PowerShell(& \"C:\\\\laragon\\\\bin\\\\nodejs\\\\node-v22\\\\npm.cmd\" install --prefix \"C:\\\\Users\\\\paulg\\\\OneDrive\\\\Desktop\\\\repetitivedocs.com\" 2>&1)",
+      "PowerShell(Get-ChildItem \"C:\\\\Users\\\\paulg\\\\OneDrive\\\\Desktop\\\\repetitivedocs.com\\\\app\" -Recurse | Select-Object FullName | ForEach-Object { $_.FullName.Replace\\(\"C:\\\\Users\\\\paulg\\\\OneDrive\\\\Desktop\\\\repetitivedocs.com\\\\\", \"\"\\) })",
+      "PowerShell($env:PATH = \"C:\\\\laragon\\\\bin\\\\php\\\\php-8.3.30-Win32-vs16-x64;\" + $env:PATH; Set-Location \"C:\\\\Users\\\\paulg\\\\OneDrive\\\\Desktop\\\\repetitivedocs.com\"; & \"C:\\\\laragon\\\\bin\\\\php\\\\php-8.3.30-Win32-vs16-x64\\\\php.exe\" artisan route:list 2>&1)",
+      "PowerShell($env:PATH = \"C:\\\\laragon\\\\bin\\\\php\\\\php-8.3.30-Win32-vs16-x64;\" + $env:PATH; Set-Location \"C:\\\\Users\\\\paulg\\\\OneDrive\\\\Desktop\\\\repetitivedocs.com\"; & \"C:\\\\laragon\\\\bin\\\\php\\\\php-8.3.30-Win32-vs16-x64\\\\php.exe\" \"C:\\\\laragon\\\\bin\\\\composer\\\\composer.phar\" show --no-dev 2>&1 | Select-Object -First 30)",
+      "Bash(php --version)",
+      "PowerShell(Get-ChildItem \"C:\\\\Users\\\\paulg\\\\OneDrive\\\\Desktop\\\\Referral Bunny API\" | ForEach-Object { $_.Name })",
+      "PowerShell(Get-ChildItem \"C:\\\\Users\\\\paulg\\\\OneDrive\\\\Desktop\\\\Referral Bunny API\\\\supabase\" -Recurse | ForEach-Object { $_.FullName.Replace\\(\"C:\\\\Users\\\\paulg\\\\OneDrive\\\\Desktop\\\\Referral Bunny API\\\\\", \"\"\\) })",
+      "PowerShell(Get-ChildItem \"C:\\\\Users\\\\paulg\\\\OneDrive\\\\Desktop\\\\Referral Bunny API\\\\app\" -Recurse | ForEach-Object { $_.FullName.Replace\\(\"C:\\\\Users\\\\paulg\\\\OneDrive\\\\Desktop\\\\Referral Bunny API\\\\app\\\\\", \"\"\\) })",
+      "PowerShell(Get-ChildItem \"C:\\\\Users\\\\paulg\\\\OneDrive\\\\Desktop\\\\Referral Bunny API\\\\resources\" -Recurse | ForEach-Object { $_.FullName.Replace\\(\"C:\\\\Users\\\\paulg\\\\OneDrive\\\\Desktop\\\\Referral Bunny API\\\\resources\\\\\", \"\"\\) })",
+      "PowerShell(Get-ChildItem \"C:\\\\Users\\\\paulg\\\\OneDrive\\\\Desktop\\\\repetitivedocs-figma\" -Depth 2 | ForEach-Object { $_.FullName.Replace\\(\"C:\\\\Users\\\\paulg\\\\OneDrive\\\\Desktop\\\\repetitivedocs-figma\\\\\", \"\"\\) })",
+      "PowerShell(Get-ChildItem \"C:\\\\Users\\\\paulg\\\\OneDrive\\\\Desktop\\\\repetitivedocs-figma\\\\src\\\\app\\\\components\" -Depth 1 | ForEach-Object { $_.Name })",
+      "PowerShell(New-Item -ItemType Directory -Force -Path \"c:\\\\Users\\\\paulg\\\\OneDrive\\\\Desktop\\\\repetitivedocs.com\\\\resources\\\\views\\\\components\\\\layouts\")",
+      "PowerShell(Move-Item -Force \"c:\\\\Users\\\\paulg\\\\OneDrive\\\\Desktop\\\\repetitivedocs.com\\\\resources\\\\views\\\\layouts\\\\auth.blade.php\" \"c:\\\\Users\\\\paulg\\\\OneDrive\\\\Desktop\\\\repetitivedocs.com\\\\resources\\\\views\\\\components\\\\layouts\\\\auth.blade.php\")",
+      "PowerShell(Move-Item -Force \"c:\\\\Users\\\\paulg\\\\OneDrive\\\\Desktop\\\\repetitivedocs.com\\\\resources\\\\views\\\\layouts\\\\app.blade.php\" \"c:\\\\Users\\\\paulg\\\\OneDrive\\\\Desktop\\\\repetitivedocs.com\\\\resources\\\\views\\\\components\\\\layouts\\\\app.blade.php\")",
+      "PowerShell(New-Item -ItemType Directory -Force -Path \"c:\\\\Users\\\\paulg\\\\OneDrive\\\\Desktop\\\\repetitivedocs.com\\\\app\\\\Services\")",
+      "PowerShell(New-Item -ItemType Directory -Force -Path \"c:\\\\Users\\\\paulg\\\\OneDrive\\\\Desktop\\\\repetitivedocs.com\\\\resources\\\\views\\\\partials\")",
+      "Bash('C:\\\\laragon\\\\bin\\\\php\\\\php-8.3.30-Win32-vs16-x64\\\\php.exe' -r ' *)"
+    ],
+    "additionalDirectories": [
+      "C:\\laragon\\bin\\php\\php-8.3.30-Win32-vs16-x64",
+      "C:\\Users\\paulg\\OneDrive\\Desktop\\repetitivedocs.com\\_tmp"
+    ]
+  }
+}
