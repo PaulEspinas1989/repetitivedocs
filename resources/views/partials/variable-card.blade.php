@@ -1,17 +1,23 @@
 @php
-    $statusClasses = match($var->approval_status) {
-        'approved' => 'border-success/30 bg-success/5',
-        'rejected' => 'border-danger/30 bg-danger/5',
-        default    => 'border-line bg-white',
-    };
+    // Avoid match() inside @php — Blade brace tokeniser can misread it
+    if ($var->approval_status === 'approved') {
+        $statusClasses = 'border-success/30 bg-success/5';
+    } elseif ($var->approval_status === 'rejected') {
+        $statusClasses = 'border-danger/30 bg-danger/5';
+    } else {
+        $statusClasses = 'border-line bg-white';
+    }
     $isRepeating    = ($var->occurrences ?: 1) > 1;
     $thisCardHasErr = $errors->any() && session('error_variable_id') === $var->id;
-    $initLabel      = json_encode(old('label', $var->label));
-    $initType       = json_encode(old('type',  $var->type));
+    $editingInit    = $thisCardHasErr ? 'true' : 'false';
 @endphp
-
+{{--
+  x-data uses @json() for label/type — @json() HTML-encodes quotes so they
+  don't break the double-quoted attribute, and browsers decode them correctly
+  before Alpine parses the object.
+--}}
 <div class="rounded-2xl border-2 {{ $statusClasses }} p-5 transition-all"
-     x-data="{ editing: {{ $thisCardHasErr ? 'true' : 'false' }}, label: {{ $initLabel }}, type: {{ $initType }} }">
+     x-data="{ editing: {{ $editingInit }}, label: @json(old('label', $var->label)), type: @json(old('type', $var->type)) }">
 
     {{-- View mode --}}
     <div x-show="!editing">

@@ -77,23 +77,28 @@
      }"
      x-init="startAnalysis()">
 
-    {{-- Loopi with pulse glow --}}
-    <div class="relative mb-8">
-        <div class="absolute inset-0 rounded-full rd-pulse-glow" style="background:rgba(47,107,255,0.08);border-radius:50%;"></div>
+    {{-- Loopi + floating chips — wrapped in a fixed-size container so chips never overflow their bounds --}}
+    <div class="relative mb-10 flex items-center justify-center" style="width:280px;height:200px;">
+
+        {{-- Pulse glow ring behind Loopi --}}
+        <div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-40 h-40 rounded-full rd-pulse-glow"
+             style="background:rgba(47,107,255,0.07);"></div>
+
+        {{-- Loopi mascot --}}
         <img src="{{ asset('images/loopi-welcome.png') }}" alt="Loopi is analyzing"
              class="w-36 h-36 object-contain relative z-10 animate-float">
 
-        {{-- Floating variable chips --}}
-        <div x-show="!error && step >= 1"
-             class="absolute -top-4 -right-8 px-2.5 py-1 bg-primary/10 text-primary text-xs font-mono rounded-full border border-primary/20 rd-float-chip-1 select-none">
+        {{-- Floating variable chips — positioned inside the 280×200 wrapper, no negative overflow --}}
+        <div x-show="!error && step >= 1" x-cloak
+             class="absolute top-2 right-0 px-3 py-1 bg-primary/10 text-primary text-xs font-mono rounded-full border border-primary/20 rd-float-chip-1 select-none whitespace-nowrap z-20">
             &#123;name&#125;
         </div>
-        <div x-show="!error && step >= 2"
-             class="absolute top-8 -left-10 px-2.5 py-1 bg-success/10 text-success text-xs font-mono rounded-full border border-success/20 rd-float-chip-2 select-none">
+        <div x-show="!error && step >= 2" x-cloak
+             class="absolute top-16 left-0 px-3 py-1 bg-success/10 text-success text-xs font-mono rounded-full border border-success/20 rd-float-chip-2 select-none whitespace-nowrap z-20">
             &#123;date&#125;
         </div>
-        <div x-show="!error && step >= 3"
-             class="absolute -bottom-2 -right-6 px-2.5 py-1 bg-warning/10 text-warning text-xs font-mono rounded-full border border-warning/20 rd-float-chip-3 select-none">
+        <div x-show="!error && step >= 3" x-cloak
+             class="absolute bottom-4 right-4 px-3 py-1 bg-warning/10 text-warning text-xs font-mono rounded-full border border-warning/20 rd-float-chip-3 select-none whitespace-nowrap z-20">
             &#123;amount&#125;
         </div>
     </div>
