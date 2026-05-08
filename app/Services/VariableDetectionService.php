@@ -116,7 +116,7 @@ class VariableDetectionService
                     ],
                 ],
             ],
-            model:       $this->ai->fastModel(),
+            model:       $this->ai->smartModel(),
             maxTokens:   4096,
             betaHeaders: ['pdfs-2024-09-25'],
         );
@@ -441,12 +441,11 @@ class VariableDetectionService
         $taskNumber = $skipDocumentText ? '1' : '2';
 
         return <<<PROMPT
-You are an AI document analyzer for a document automation platform called RepetitiveDocs.
+You are an AI document analyzer for RepetitiveDocs, a document personalization platform.
 
-The user uploaded a document called "{$templateName}". Your task is to:
-{$docTextInstruction}{$taskNumber}. Identify all fields that CHANGE from one document to the next
+The document is called "{$templateName}". Your job is to find every piece of information that would need to change when this document is reused for a different person, organization, date, or transaction.
 
-Return ONLY a valid JSON object with this exact structure (no markdown, no explanation):
+{$docTextInstruction}Return ONLY a valid JSON object with this exact structure (no markdown, no explanation):
 {
 {$docTextField}  "variables": [
     {
@@ -454,42 +453,46 @@ Return ONLY a valid JSON object with this exact structure (no markdown, no expla
       "label": "Human Readable Label",
       "type": "text|date|number|currency|email|phone|address|select",
       "description": "Brief description of what this field represents",
-      "example_value": "The exact value found in this document",
+      "example_value": "The exact text value as it appears in the document",
       "is_required": true,
       "sort_order": 1
     }
   ],
   "summary": {
     "total": 10,
-    "categories": {
-      "people": 3,
-      "dates": 2,
-      "amounts": 2,
-      "locations": 1,
-      "contacts": 1,
-      "organizations": 1
-    }
+    "categories": { "people": 3, "dates": 2, "amounts": 2, "locations": 1, "contacts": 1, "organizations": 1 }
   }
 }
 
 Type guide:
-- text: names, titles, descriptions, IDs, reference numbers, job titles
+- text: names, titles, positions, IDs, reference numbers, descriptions
 - date: any date or time value
 - number: quantities, counts, percentages
-- currency: monetary amounts (₱, $, etc.)
+- currency: monetary amounts with peso/dollar signs
 - email: email addresses
 - phone: phone or mobile numbers
 - address: physical addresses
-- select: fields with limited choices (e.g., civil status, department, payment type)
+- select: limited choices (e.g., payment type, civil status)
 
-Rules:
-- Only include fields that REALISTICALLY CHANGE between documents
-- Do NOT include static headers, fixed company boilerplate, or constant text
-- Use snake_case for all names (e.g., client_name, invoice_date)
-- Keep labels concise (2–4 words)
-- sort_order must reflect document order (top to bottom)
-- example_value MUST be the COMPLETE, EXACT text string as it appears in the document — never just a number like "4" or "2" alone; include surrounding context if needed (e.g., "4 Modules" not "4", "Municipality of Perez, Quezon" not "Perez")
-- Return ONLY the JSON object — nothing else
+CRITICAL detection rules — you MUST detect ALL of the following when present:
+1. NAMES — full names of people anywhere in the document: recipients, signatories, mayors, officials, clients, employees, owners. Look in ALL sections including headers, body, approval blocks, signature blocks, and footers.
+2. POSITIONS/TITLES — job titles and positions next to names (Mayor, Director, President, etc.)
+3. ORGANIZATIONS — LGU names, company names, municipality names, barangay names
+4. DATES — any date in any format, including document date, validity date, proposal date, signing date
+5. AMOUNTS — monetary values, totals, package prices, fees
+6. ADDRESSES — office addresses, location references
+7. REFERENCE NUMBERS — document numbers, proposal numbers, case numbers
+8. APPROVAL SECTIONS — names and positions in approval, signatory, certification, and endorsement blocks are variables — they change per document
+
+Do NOT skip a field just because it is in a header, footer, or approval/signature block. Those sections change every time the document is issued to a different recipient or signed by a different official.
+
+Do NOT include: fixed legal boilerplate text, static instruction text, column headers in tables, or document titles that never change.
+
+example_value MUST be the COMPLETE exact text as it appears (e.g. "Hon. Mayor Charizze Marie Escalona" not "Escalona", "May 6, 2026" not "May").
+
+Use snake_case names. Keep labels 2–4 words. sort_order = top-to-bottom reading order.
+
+Return ONLY the JSON object — no explanation, no markdown fences.
 PROMPT;
     }
 
