@@ -106,7 +106,28 @@ class VariableDetectionService
             betaHeaders: ['pdfs-2024-09-25'],
         );
 
-        return $this->parseResponse($response);
+        $data = $this->parseResponse($response);
+
+        // Extract text from PDF using pdftotext for generation use
+        $pdfText = $this->extractPdfText(Storage::disk($doc->disk)->path($doc->path));
+        if (!empty($pdfText)) {
+            $data['document_text'] = $pdfText;
+        }
+
+        return $data;
+    }
+
+    private function extractPdfText(string $pdfPath): string
+    {
+        if (!file_exists($pdfPath)) {
+            return '';
+        }
+
+        $output   = [];
+        $exitCode = 0;
+        exec('pdftotext ' . escapeshellarg($pdfPath) . ' - 2>/dev/null', $output, $exitCode);
+
+        return $exitCode === 0 ? implode("\n", $output) : '';
     }
 
     private function analyzeWithText(UploadedDocument $doc): array
