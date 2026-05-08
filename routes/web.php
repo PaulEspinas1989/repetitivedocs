@@ -59,7 +59,7 @@ Route::middleware(['auth', 'workspace'])->group(function () {
             abort(403);
         }
         $template->load(['variables' => fn($q) => $q->orderBy('sort_order')
-            ->select(['id','template_id','workspace_id','name','label','type',
+            ->select(['id','template_id','workspace_id','name','label','type','description',
                       'example_value','approval_status','occurrences','is_required','sort_order','ai_suggested'])
         ]);
         return view('automation-map', compact('template'));
@@ -71,7 +71,8 @@ Route::middleware(['auth', 'workspace'])->group(function () {
             abort(403);
         }
         $template->variables()->update(['approval_status' => 'approved']);
-        return redirect()->route('templates.editor', $template->id);
+        return redirect()->route('templates.editor', $template->id)
+            ->with('toast', 'All fields approved. Ready to generate your form.');
     })->name('templates.approve-all');
 
     // ── Group approve/reject (repeating or standalone) ────────
@@ -101,7 +102,11 @@ Route::middleware(['auth', 'workspace'])->group(function () {
         }
         $query->update(['approval_status' => $status]);
 
-        return redirect()->route('automation-map', $template->id);
+        $groupLabel  = $group === 'repeating' ? 'Repeating' : 'Standalone';
+        $actionLabel = $action === 'approve' ? 'approved' : 'rejected';
+
+        return redirect()->route('automation-map', $template->id)
+            ->with('toast', "{$groupLabel} fields {$actionLabel}.");
     })->name('templates.group-action');
 
     // ── Template variable review ──────────────────────────────
@@ -110,7 +115,7 @@ Route::middleware(['auth', 'workspace'])->group(function () {
             abort(403);
         }
         $template->load(['variables' => fn($q) => $q->orderBy('sort_order')
-            ->select(['id','template_id','workspace_id','name','label','type',
+            ->select(['id','template_id','workspace_id','name','label','type','description',
                       'example_value','approval_status','occurrences','is_required','sort_order','ai_suggested'])
         ]);
         return view('automation-map', compact('template'));

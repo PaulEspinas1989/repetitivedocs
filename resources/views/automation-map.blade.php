@@ -122,19 +122,19 @@
                 <x-icon name="eye" class="w-6 h-6 text-primary" />
             </div>
             <h3 class="text-lg font-semibold text-navy mb-2">Review one by one</h3>
-            <p class="text-sm text-slate mb-4">Go through each detected field and approve, edit, or reject individually</p>
-            <span class="text-primary text-sm font-medium group-hover:underline">Review fields →</span>
-        </a>
-
-        <a href="{{ route('templates.editor', $template->id) }}"
-           class="bg-white rounded-2xl p-6 border-2 border-line hover:border-primary hover:shadow-lg transition-all text-left group block">
-            <div class="w-12 h-12 bg-blue-soft rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                <x-icon name="sparkles" class="w-6 h-6 text-primary" />
-            </div>
-            <h3 class="text-lg font-semibold text-navy mb-2">Go to template editor</h3>
-            <p class="text-sm text-slate mb-4">Open the full template editor to manually fine-tune variables and settings</p>
+            <p class="text-sm text-slate mb-4">Open the full editor to approve, edit, or reject each field individually with full detail</p>
             <span class="text-primary text-sm font-medium group-hover:underline">Open editor →</span>
         </a>
+
+        {{-- Use the variable rows below to review inline, or scroll down --}}
+        <div class="bg-blue-soft rounded-2xl p-6 border-2 border-line text-left">
+            <div class="w-12 h-12 bg-white rounded-xl flex items-center justify-center mb-4">
+                <x-icon name="arrow-down" class="w-6 h-6 text-primary" />
+            </div>
+            <h3 class="text-lg font-semibold text-navy mb-2">Review inline below</h3>
+            <p class="text-sm text-slate mb-4">Use the Approve / Reject buttons directly on each row in the groups below</p>
+            <span class="text-slate text-sm font-medium">↓ Scroll down to review</span>
+        </div>
     </div>
 
     {{-- ── Grouped variable lists ─────────────────────────────── --}}
@@ -232,7 +232,7 @@
     @endphp
 
     @if($anyApproved)
-    <div class="sticky bottom-6 mt-8">
+    <div class="sticky bottom-6 mt-8 z-10">
         <div class="bg-white border border-line rounded-2xl shadow-lg px-6 py-4 flex items-center justify-between gap-4">
             <div>
                 @if($allApproved)

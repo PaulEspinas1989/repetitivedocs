@@ -4,11 +4,14 @@
         'rejected' => 'border-danger/30 bg-danger/5',
         default    => 'border-line bg-white',
     };
-    $isRepeating = ($var->occurrences ?: 1) > 1;
+    $isRepeating    = ($var->occurrences ?: 1) > 1;
+    $thisCardHasErr = $errors->any() && session('error_variable_id') === $var->id;
+    $initLabel      = json_encode(old('label', $var->label));
+    $initType       = json_encode(old('type',  $var->type));
 @endphp
 
 <div class="rounded-2xl border-2 {{ $statusClasses }} p-5 transition-all"
-     x-data="{ editing: {{ $errors->any() ? 'true' : 'false' }}, label: {{ json_encode($var->label) }}, type: {{ json_encode($var->type) }} }">
+     x-data="{ editing: {{ $thisCardHasErr ? 'true' : 'false' }}, label: {{ $initLabel }}, type: {{ $initType }} }">
 
     {{-- View mode --}}
     <div x-show="!editing">
@@ -127,8 +130,8 @@
 
     {{-- Edit mode --}}
     <div x-show="editing" x-cloak>
-        {{-- Validation errors scoped to this variable --}}
-        @if($errors->any())
+        {{-- Validation errors scoped to this variable only --}}
+        @if($thisCardHasErr)
         <div class="mb-3 p-3 bg-danger/10 border border-danger/20 rounded-xl text-xs text-danger">
             @foreach($errors->all() as $error)
             <p>{{ $error }}</p>

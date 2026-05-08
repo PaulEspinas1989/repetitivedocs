@@ -53,19 +53,27 @@ class TemplateEditorController extends Controller
         $this->authorizeWorkspace($template);
         $this->authorizeVariable($template, $variable);
 
-        $request->validate([
+        $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
             'label'       => ['required', 'string', 'max:100'],
             'type'        => ['required', 'string', 'in:text,date,number,currency,email,phone,address,select'],
             'is_required' => ['boolean'],
         ]);
 
+        if ($validator->fails()) {
+            // Store variable ID so the view opens ONLY this card's edit form
+            return back()
+                ->withErrors($validator)
+                ->withInput()
+                ->with('error_variable_id', $variable->id);
+        }
+
         $variable->update([
             'label'       => $request->label,
             'type'        => $request->type,
-            'is_required' => $request->boolean('is_required'), // false when checkbox absent
+            'is_required' => $request->boolean('is_required'),
         ]);
 
-        return back()->with('toast', 'Variable updated.');
+        return back()->with('toast', 'Field "' . $request->label . '" updated.');
     }
 
     public function undoVariable(Template $template, TemplateVariable $variable): RedirectResponse
