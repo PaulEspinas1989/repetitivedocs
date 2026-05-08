@@ -39,6 +39,8 @@ class TemplateVariable extends Model
         'user_confirmed_mode', 'is_sensitive_flag',
         // Review flags
         'needs_review', 'needs_review_reason',
+        // Date formatting
+        'date_format',
     ];
 
     protected $casts = [

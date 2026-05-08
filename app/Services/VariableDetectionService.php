@@ -12,7 +12,10 @@ use ZipArchive;
 
 class VariableDetectionService
 {
-    public function __construct(private AIProviderService $ai) {}
+    public function __construct(
+        private AIProviderService $ai,
+        private DateFormatterService $dateFormatter,
+    ) {}
 
     /**
      * Analyze an uploaded document, create a Template and its TemplateVariables.
@@ -79,12 +82,21 @@ class VariableDetectionService
                 $confidenceScore = (float) ($v['confidence_score'] ?? 1.0);
                 $needsReview     = $confidenceScore < 0.70;
 
+                $varType = $v['type'] ?? 'text';
+
+                // For date fields, detect the format from the AI-extracted example value
+                // so the generation pipeline can reformat ISO date input to match the original.
+                $dateFormat = null;
+                if ($varType === 'date' && !empty($exampleValue)) {
+                    $dateFormat = $this->dateFormatter->detectFormat($exampleValue);
+                }
+
                 $variable = TemplateVariable::create([
                     'template_id'         => $template->id,
                     'workspace_id'        => $doc->workspace_id,
                     'name'                => Str::snake($v['name'] ?? Str::random(8)),
                     'label'               => $v['label'] ?? $v['name'] ?? 'Unknown',
-                    'type'                => $v['type'] ?? 'text',
+                    'type'                => $varType,
                     'description'         => $v['description'] ?? null,
                     'example_value'       => $exampleValue,
                     'is_required'         => $v['is_required'] ?? true,
@@ -98,6 +110,7 @@ class VariableDetectionService
                     'grouping_confidence' => (int) round($confidenceScore * 100),
                     'grouping_reason'     => $v['grouping_reason'] ?? null,
                     'needs_review'        => $needsReview,
+                    'date_format'         => $dateFormat,
                 ]);
 
                 $this->createOccurrenceRecords(

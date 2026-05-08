@@ -177,13 +177,39 @@
                             <p class="text-xs text-muted mt-1">Currency formatting will be applied automatically</p>
 
                             @elseif($var->type === 'date')
-                            <input
-                                type="date"
-                                id="field_{{ $var->name }}"
-                                name="fields[{{ $var->name }}]"
-                                value="{{ old('fields.' . $var->name, $var->default_value) }}"
-                                class="w-full px-4 py-3 border border-line rounded-xl bg-white text-navy text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors @error('fields.'.$var->name) border-danger @enderror"
-                            >
+                            @php
+                                // Build a JS-safe format label for the preview (e.g. "May 30, 2026")
+                                $detectedFmt  = $var->date_format ?: \App\Services\DateFormatterService::DEFAULT_FORMAT;
+                                $examplePreview = '';
+                                try {
+                                    $examplePreview = \Carbon\Carbon::now()->format($detectedFmt);
+                                } catch (\Throwable) {}
+                            @endphp
+                            <div x-data="{
+                                raw: @json(old('fields.' . $var->name, '')),
+                                get preview() {
+                                    if (!this.raw) return '';
+                                    const [y,m,d] = this.raw.split('-');
+                                    if (!y || !m || !d) return '';
+                                    const dt = new Date(+y, +m - 1, +d);
+                                    if (isNaN(dt)) return '';
+                                    return dt.toLocaleDateString('en-PH', { year:'numeric', month:'long', day:'numeric' });
+                                }
+                            }">
+                                <input
+                                    type="date"
+                                    id="field_{{ $var->name }}"
+                                    name="fields[{{ $var->name }}]"
+                                    x-model="raw"
+                                    value="{{ old('fields.' . $var->name, '') }}"
+                                    class="w-full px-4 py-3 border border-line rounded-xl bg-white text-navy text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors @error('fields.'.$var->name) border-danger @enderror"
+                                >
+                                <p x-show="preview" x-cloak
+                                   class="text-xs text-success mt-1 flex items-center gap-1">
+                                    <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                                    Will appear as: <span x-text="preview" class="font-medium ml-0.5"></span>
+                                </p>
+                            </div>
 
                             @elseif($var->type === 'email')
                             <div class="relative">
@@ -228,6 +254,28 @@
                             @error('fields.' . $var->name)
                             <p class="text-xs text-danger mt-1">{{ $message }}</p>
                             @enderror
+
+                            {{-- Keep-as-constant toggle — eligible for non-date, non-currency, non-number fields --}}
+                            @if(!in_array($var->type, ['date','number','currency']) && !$var->isFixed())
+                            <div x-data="{ on: false }" class="mt-2">
+                                <label class="inline-flex items-center gap-2 cursor-pointer select-none group">
+                                    <input type="checkbox"
+                                           name="keep_as_constant[{{ $var->name }}]"
+                                           value="1"
+                                           x-model="on"
+                                           class="w-4 h-4 rounded border-line text-primary focus:ring-primary/20">
+                                    <span class="text-xs text-muted group-hover:text-navy transition-colors">
+                                        Remember this for future documents
+                                    </span>
+                                </label>
+                                <p x-show="on" x-cloak class="text-xs text-primary mt-1 ml-6">
+                                    Loopi will use this answer automatically next time.
+                                    @if($var->looksLikeSensitive())
+                                    <span class="text-warning"> Only keep as constant if this value stays the same every time.</span>
+                                    @endif
+                                </p>
+                            </div>
+                            @endif
                         </div>
                         @endforeach
                     </div>

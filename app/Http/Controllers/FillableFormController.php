@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\GeneratedDocument;
 use App\Models\Template;
 use App\Models\TemplateVariable;
+use App\Services\DateFormatterService;
 use App\Services\DocumentGenerationService;
 use App\Services\GenerationValueResolverService;
 use Illuminate\Http\RedirectResponse;
@@ -18,6 +19,7 @@ class FillableFormController extends Controller
     public function __construct(
         private DocumentGenerationService $generator,
         private GenerationValueResolverService $resolver,
+        private DateFormatterService $dateFormatter,
     ) {}
 
     public function show(Template $template): View|RedirectResponse
@@ -69,7 +71,11 @@ class FillableFormController extends Controller
         // One-time overrides: user chose "Use a different value this time" for a fixed field
         $overrides = $request->input('overrides', []);
 
+        // Keep-as-constant selections: [ var_name => '1' ]
+        $keepAsConstant = $request->input('keep_as_constant', []);
+
         // Strip peso sign and commas from currency fields
+        // Format date fields from ISO (YYYY-MM-DD) to the template's detected format
         foreach ($template->approvedVariables as $var) {
             if ($var->type === 'currency') {
                 if (isset($userValues[$var->name])) {
@@ -78,18 +84,49 @@ class FillableFormController extends Controller
                 if (isset($overrides[$var->name])) {
                     $overrides[$var->name] = preg_replace('/[₱,\s]/', '', $overrides[$var->name]);
                 }
+            } elseif ($var->type === 'date') {
+                // Format the ISO date into the document's expected format before generation.
+                // e.g. '2026-05-30' + date_format='F j, Y' → 'May 30, 2026'
+                if (!empty($userValues[$var->name])) {
+                    $userValues[$var->name] = $this->dateFormatter->format(
+                        $userValues[$var->name],
+                        $var->date_format
+                    );
+                }
+                if (!empty($overrides[$var->name])) {
+                    $overrides[$var->name] = $this->dateFormatter->format(
+                        $overrides[$var->name],
+                        $var->date_format
+                    );
+                }
             }
         }
 
         try {
             $generated = $this->generator->generate($template, $userValues, $overrides);
 
-            // After first generation from a saved template, prompt Fixed Fields Review
-            $redirectRoute = $template->isSavedTemplate() && !$template->fixed_fields_reviewed
-                ? 'generation-result'
-                : 'generation-result';
+            // Save keep-as-constant values as fixed fields after successful generation.
+            // We save AFTER generation so a failed generation never silently locks a value.
+            foreach ($template->approvedVariables as $var) {
+                if (empty($keepAsConstant[$var->name])) {
+                    continue;
+                }
+                $valueToSave = $userValues[$var->name] ?? $overrides[$var->name] ?? null;
+                if ($valueToSave === null || $valueToSave === '') {
+                    continue;
+                }
+                $var->update([
+                    'value_mode'                       => TemplateVariable::MODE_FIXED,
+                    'fixed_value'                      => $valueToSave,
+                    'fixed_value_set_by_user_id'       => auth()->id(),
+                    'fixed_value_set_at'               => now(),
+                    'fixed_value_set_by_generation_id' => $generated->id,
+                    'user_confirmed_mode'              => true,
+                    'show_when_fixed'                  => false,
+                ]);
+            }
 
-            return redirect()->route($redirectRoute, $generated->id);
+            return redirect()->route('generation-result', $generated->id);
         } catch (\Throwable $e) {
             return back()->withInput()->with('error', 'Document generation failed: ' . $e->getMessage());
         }
