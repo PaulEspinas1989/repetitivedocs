@@ -334,7 +334,7 @@ class VariableDetectionService
                 ],
             ],
             model:       $this->ai->smartModel(),
-            maxTokens:   4096,
+            maxTokens:   8192,
             betaHeaders: ['pdfs-2024-09-25'],
         );
 
@@ -596,7 +596,7 @@ class VariableDetectionService
                 ],
             ],
             model:     $this->ai->fastModel(),
-            maxTokens: 4096,
+            maxTokens: 8192,
         );
 
         return $this->parseResponse($response);
@@ -770,7 +770,9 @@ PROMPT;
         if (!$data) {
             $raw = $this->ai->extractText($response);
             \Illuminate\Support\Facades\Log::error('VariableDetection: unexpected AI response', [
-                'raw' => substr($raw, 0, 1000),
+                'stop_reason' => $response['stop_reason'] ?? 'unknown',
+                'usage'       => $response['usage'] ?? [],
+                'raw'         => substr($raw, 0, 2000),
             ]);
             throw new \RuntimeException('AI returned an unexpected response format.');
         }
@@ -782,7 +784,10 @@ PROMPT;
             } else {
                 $raw = $this->ai->extractText($response);
                 \Illuminate\Support\Facades\Log::error('VariableDetection: no variables array in AI response', [
-                    'raw' => substr($raw, 0, 1000),
+                    'stop_reason' => $response['stop_reason'] ?? 'unknown',
+                    'usage'       => $response['usage'] ?? [],
+                    'keys'        => array_keys($data),
+                    'raw'         => substr($raw, 0, 2000),
                 ]);
                 throw new \RuntimeException('AI returned an unexpected response format.');
             }
