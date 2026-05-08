@@ -82,18 +82,11 @@
             {{-- Variable cards --}}
             <div class="flex-1 overflow-y-auto p-6">
 
-                @php
-                    // Helper: render a group section with a label
-                    $renderGroup = function($vars, $groupLabel, $icon, $color) use ($template) {
-                        // used inline below
-                    };
-                @endphp
-
                 {{-- Pending tab --}}
                 <div x-show="activeTab === 'pending'">
                     @php
-                        $pendingRepeating  = $pending->filter(fn($v) => ($v->occurrences ?? 1) > 1);
-                        $pendingStandalone = $pending->filter(fn($v) => ($v->occurrences ?? 1) === 1);
+                        $pendingRepeating  = $pending->filter(fn($v) => ($v->occurrences ?: 1) > 1);
+                        $pendingStandalone = $pending->filter(fn($v) => ($v->occurrences ?: 1) <= 1);
                     @endphp
                     @if($pending->isEmpty())
                     <div class="flex flex-col items-center py-16 text-center">
@@ -134,8 +127,8 @@
                 {{-- Approved tab --}}
                 <div x-show="activeTab === 'approved'">
                     @php
-                        $approvedRepeating  = $approved->filter(fn($v) => ($v->occurrences ?? 1) > 1);
-                        $approvedStandalone = $approved->filter(fn($v) => ($v->occurrences ?? 1) === 1);
+                        $approvedRepeating  = $approved->filter(fn($v) => ($v->occurrences ?: 1) > 1);
+                        $approvedStandalone = $approved->filter(fn($v) => ($v->occurrences ?: 1) <= 1);
                     @endphp
                     @if($approved->isEmpty())
                     <p class="text-sm text-muted text-center py-12">No approved fields yet.</p>
@@ -171,14 +164,39 @@
 
                 {{-- Rejected tab --}}
                 <div x-show="activeTab === 'rejected'">
+                    @php
+                        $rejectedRepeating  = $rejected->filter(fn($v) => ($v->occurrences ?: 1) > 1);
+                        $rejectedStandalone = $rejected->filter(fn($v) => ($v->occurrences ?: 1) <= 1);
+                    @endphp
                     @if($rejected->isEmpty())
                     <p class="text-sm text-muted text-center py-12">No rejected fields.</p>
                     @else
-                    <div class="space-y-3">
-                        @foreach($rejected as $var)
-                        @include('partials.variable-card', ['var' => $var, 'template' => $template])
-                        @endforeach
-                    </div>
+                        @if($rejectedRepeating->isNotEmpty())
+                        <div class="mb-2">
+                            <p class="text-xs font-semibold text-primary uppercase tracking-wide mb-3 flex items-center gap-2">
+                                <span class="w-2 h-2 rounded-full bg-primary inline-block"></span>
+                                Repeating ({{ $rejectedRepeating->count() }})
+                            </p>
+                            <div class="space-y-3">
+                                @foreach($rejectedRepeating as $var)
+                                @include('partials.variable-card', ['var' => $var, 'template' => $template])
+                                @endforeach
+                            </div>
+                        </div>
+                        @endif
+                        @if($rejectedStandalone->isNotEmpty())
+                        <div class="{{ $rejectedRepeating->isNotEmpty() ? 'mt-6' : '' }}">
+                            <p class="text-xs font-semibold text-slate uppercase tracking-wide mb-3 flex items-center gap-2">
+                                <span class="w-2 h-2 rounded-full bg-slate inline-block"></span>
+                                Standalone ({{ $rejectedStandalone->count() }})
+                            </p>
+                            <div class="space-y-3">
+                                @foreach($rejectedStandalone as $var)
+                                @include('partials.variable-card', ['var' => $var, 'template' => $template])
+                                @endforeach
+                            </div>
+                        </div>
+                        @endif
                     @endif
                 </div>
 
@@ -186,8 +204,8 @@
                 <div x-show="activeTab === 'all'">
                     @php $allVars = $pending->concat($approved)->concat($rejected); @endphp
                     @php
-                        $allRepeating  = $allVars->filter(fn($v) => ($v->occurrences ?? 1) > 1);
-                        $allStandalone = $allVars->filter(fn($v) => ($v->occurrences ?? 1) === 1);
+                        $allRepeating  = $allVars->filter(fn($v) => ($v->occurrences ?: 1) > 1);
+                        $allStandalone = $allVars->filter(fn($v) => ($v->occurrences ?: 1) <= 1);
                     @endphp
                     @if($allRepeating->isNotEmpty())
                     <div class="mb-2">

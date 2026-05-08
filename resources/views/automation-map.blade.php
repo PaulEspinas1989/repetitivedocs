@@ -5,8 +5,8 @@
     @php
         $summary = $template->variableSummary();
         $allVars       = $template->variables;
-        $repeatingVars = $allVars->filter(fn($v) => ($v->occurrences ?? 1) > 1);
-        $standaloneVars = $allVars->filter(fn($v) => ($v->occurrences ?? 1) === 1);
+        $repeatingVars  = $allVars->filter(fn($v) => ($v->occurrences ?: 1) > 1);
+        $standaloneVars = $allVars->filter(fn($v) => ($v->occurrences ?: 1) <= 1);
 
         $categoryIcons = [
             'people'        => ['icon' => 'user',        'color' => '#2F6BFF', 'label' => 'People & names'],

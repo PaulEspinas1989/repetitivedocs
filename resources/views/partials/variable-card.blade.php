@@ -8,7 +8,7 @@
 @endphp
 
 <div class="rounded-2xl border-2 {{ $statusClasses }} p-5 transition-all"
-     x-data="{ editing: false, label: '{{ addslashes($var->label) }}', type: '{{ $var->type }}' }">
+     x-data="{ editing: false, label: {{ json_encode($var->label) }}, type: {{ json_encode($var->type) }} }">
 
     {{-- View mode --}}
     <div x-show="!editing">

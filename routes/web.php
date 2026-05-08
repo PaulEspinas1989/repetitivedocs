@@ -72,19 +72,29 @@ Route::middleware(['auth', 'workspace'])->group(function () {
         if (!in_array($template->workspace_id, $workspaceIds)) {
             abort(403);
         }
-        $group  = request('group');  // 'repeating' or 'standalone'
-        $action = request('action'); // 'approve' or 'reject'
+
+        $group  = request('group');
+        $action = request('action');
+
+        // Strict validation — reject anything unexpected
+        if (!in_array($group, ['repeating', 'standalone'], true)) {
+            abort(422, 'Invalid group.');
+        }
+        if (!in_array($action, ['approve', 'reject'], true)) {
+            abort(422, 'Invalid action.');
+        }
+
         $status = $action === 'approve' ? 'approved' : 'rejected';
 
         $query = $template->variables();
         if ($group === 'repeating') {
             $query->where('occurrences', '>', 1);
-        } elseif ($group === 'standalone') {
-            $query->where('occurrences', 1);
+        } else {
+            $query->where('occurrences', '<=', 1);
         }
         $query->update(['approval_status' => $status]);
 
-        return back();
+        return redirect()->route('automation-map', $template->id);
     })->name('templates.group-action');
 
     // ── Template variable review ──────────────────────────────

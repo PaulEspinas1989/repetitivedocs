@@ -62,10 +62,12 @@ class VariableDetectionService
                 }
 
                 if (!empty($exampleValue) && !empty($docText)) {
-                    $occurrences = max(1, substr_count(
-                        mb_strtolower($docText),
-                        mb_strtolower($exampleValue)
-                    ));
+                    // preg_match_all with /u flag is Unicode-safe for Filipino text
+                    $count = preg_match_all(
+                        '/' . preg_quote(mb_strtolower($exampleValue), '/') . '/u',
+                        mb_strtolower($docText)
+                    );
+                    $occurrences = max(1, (int) $count);
                 }
 
                 TemplateVariable::create([
