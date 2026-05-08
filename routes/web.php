@@ -43,6 +43,9 @@ Route::middleware(['auth', 'workspace'])->group(function () {
 
     // ── AI Loading ────────────────────────────────────────────
     Route::get('/ai-loading/{document}', function (UploadedDocument $document) {
+        if ((int) $document->workspace_id !== (int) auth()->user()->active_workspace_id) {
+            abort(403);
+        }
         return view('ai-loading', ['document' => $document]);
     })->name('ai-loading');
 
@@ -52,14 +55,16 @@ Route::middleware(['auth', 'workspace'])->group(function () {
 
     // ── Automation Map ────────────────────────────────────────
     Route::get('/templates/{template}/automation-map', function (Template $template) {
+        if ((int) $template->workspace_id !== (int) auth()->user()->active_workspace_id) {
+            abort(403);
+        }
         $template->load('variables');
         return view('automation-map', compact('template'));
     })->name('automation-map');
 
     // ── Template: approve all variables ──────────────────────
     Route::post('/templates/{template}/approve-all', function (Template $template) {
-        $workspaceIds = auth()->user()->workspaces()->pluck('workspaces.id')->toArray();
-        if (!in_array($template->workspace_id, $workspaceIds)) {
+        if ((int) $template->workspace_id !== (int) auth()->user()->active_workspace_id) {
             abort(403);
         }
         $template->variables()->update(['approval_status' => 'approved']);
@@ -68,8 +73,7 @@ Route::middleware(['auth', 'workspace'])->group(function () {
 
     // ── Group approve/reject (repeating or standalone) ────────
     Route::post('/templates/{template}/group-action', function (Template $template) {
-        $workspaceIds = auth()->user()->workspaces()->pluck('workspaces.id')->toArray();
-        if (!in_array($template->workspace_id, $workspaceIds)) {
+        if ((int) $template->workspace_id !== (int) auth()->user()->active_workspace_id) {
             abort(403);
         }
 
@@ -99,6 +103,9 @@ Route::middleware(['auth', 'workspace'])->group(function () {
 
     // ── Template variable review ──────────────────────────────
     Route::get('/templates/{template}/variables', function (Template $template) {
+        if ((int) $template->workspace_id !== (int) auth()->user()->active_workspace_id) {
+            abort(403);
+        }
         $template->load('variables');
         return view('automation-map', compact('template'));
     })->name('templates.variables');
@@ -119,6 +126,9 @@ Route::middleware(['auth', 'workspace'])->group(function () {
 
     // ── Generation result ─────────────────────────────────────
     Route::get('/generated/{generated}', function (GeneratedDocument $generated) {
+        if ((int) $generated->workspace_id !== (int) auth()->user()->active_workspace_id) {
+            abort(403);
+        }
         $generated->load(['template.approvedVariables']);
         return view('generation-result', compact('generated'));
     })->name('generation-result');

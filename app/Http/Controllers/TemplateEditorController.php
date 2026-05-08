@@ -62,7 +62,7 @@ class TemplateEditorController extends Controller
         $variable->update([
             'label'       => $request->label,
             'type'        => $request->type,
-            'is_required' => $request->boolean('is_required', true),
+            'is_required' => $request->boolean('is_required'), // false when checkbox absent
         ]);
 
         return back()->with('toast', 'Variable updated.');
