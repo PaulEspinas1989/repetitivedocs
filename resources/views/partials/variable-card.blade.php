@@ -4,7 +4,7 @@
         'rejected' => 'border-danger/30 bg-danger/5',
         default    => 'border-line bg-white',
     };
-    $isRepeating = ($var->occurrences ?? 1) > 1;
+    $isRepeating = ($var->occurrences ?: 1) > 1;
 @endphp
 
 <div class="rounded-2xl border-2 {{ $statusClasses }} p-5 transition-all"

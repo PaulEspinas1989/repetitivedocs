@@ -29,6 +29,7 @@ class TemplateEditorController extends Controller
     public function approveVariable(Template $template, TemplateVariable $variable): RedirectResponse
     {
         $this->authorizeWorkspace($template);
+        $this->authorizeVariable($template, $variable);
 
         $variable->update(['approval_status' => 'approved']);
         $this->syncReadiness($template);
@@ -39,6 +40,7 @@ class TemplateEditorController extends Controller
     public function rejectVariable(Template $template, TemplateVariable $variable): RedirectResponse
     {
         $this->authorizeWorkspace($template);
+        $this->authorizeVariable($template, $variable);
 
         $variable->update(['approval_status' => 'rejected']);
         $this->syncReadiness($template);
@@ -49,6 +51,7 @@ class TemplateEditorController extends Controller
     public function updateVariable(Request $request, Template $template, TemplateVariable $variable): RedirectResponse
     {
         $this->authorizeWorkspace($template);
+        $this->authorizeVariable($template, $variable);
 
         $request->validate([
             'label'       => ['required', 'string', 'max:100'],
@@ -68,6 +71,7 @@ class TemplateEditorController extends Controller
     public function undoVariable(Template $template, TemplateVariable $variable): RedirectResponse
     {
         $this->authorizeWorkspace($template);
+        $this->authorizeVariable($template, $variable);
 
         $variable->update(['approval_status' => 'pending']);
         $this->syncReadiness($template);
@@ -90,6 +94,13 @@ class TemplateEditorController extends Controller
     private function authorizeWorkspace(Template $template): void
     {
         if ((int) $template->workspace_id !== (int) auth()->user()->active_workspace_id) {
+            abort(403);
+        }
+    }
+
+    private function authorizeVariable(Template $template, TemplateVariable $variable): void
+    {
+        if ((int) $variable->template_id !== (int) $template->id) {
             abort(403);
         }
     }

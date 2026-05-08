@@ -25,7 +25,7 @@ class TemplateVariable extends Model
 
     public function isRepeating(): bool
     {
-        return ($this->occurrences ?? 1) > 1;
+        return ($this->occurrences ?: 1) > 1;
     }
 
     public function template(): BelongsTo
