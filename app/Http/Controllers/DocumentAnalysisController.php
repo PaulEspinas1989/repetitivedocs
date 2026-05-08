@@ -13,6 +13,9 @@ class DocumentAnalysisController extends Controller
 
     public function analyze(Request $request, UploadedDocument $document): JsonResponse
     {
+        // AI analysis can take 30–120 seconds for complex documents — lift the PHP execution cap.
+        set_time_limit(180);
+
         // Ensure the document belongs to the current workspace
         $workspace = auth()->user()->activeWorkspace;
 
