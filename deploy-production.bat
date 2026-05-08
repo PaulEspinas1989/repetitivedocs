@@ -15,7 +15,7 @@ git push origin main
 
 echo.
 echo [2/3] Deploying to production server...
-ssh root@139.162.61.79 "cd /var/www/repetitivedocs && git pull origin main && composer install --no-dev --optimize-autoloader --no-interaction --no-progress && npm ci && npm run build && php artisan config:cache && php artisan route:cache && php artisan view:cache && php artisan migrate --force && chown -R www-data:www-data storage bootstrap/cache && supervisorctl restart repetitivedocs-worker: && echo DONE"
+ssh root@139.162.61.79 "cd /var/www/repetitivedocs && git pull origin main && composer install --no-dev --optimize-autoloader --no-interaction --no-progress && npm ci && npm run build && php artisan view:clear && php artisan config:cache && php artisan route:cache && php artisan view:cache && php artisan migrate --force && chown -R www-data:www-data storage bootstrap/cache && systemctl reload php8.3-fpm && supervisorctl restart repetitivedocs-worker: && echo DONE"
 
 echo.
 echo [3/3] Done!

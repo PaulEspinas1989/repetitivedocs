@@ -14,7 +14,12 @@ class TemplateEditorController extends Controller
     {
         $this->authorizeWorkspace($template);
 
-        $template->load(['variables' => fn($q) => $q->orderBy('sort_order')]);
+        $template->load(['variables' => fn($q) => $q
+            ->select(['id','template_id','workspace_id','name','label','type',
+                      'description','example_value','approval_status',
+                      'occurrences','is_required','sort_order','ai_suggested'])
+            ->orderBy('sort_order')
+        ]);
         $this->syncReadiness($template);
 
         return view('template-editor', [
@@ -115,13 +120,9 @@ class TemplateEditorController extends Controller
 
     private function syncReadiness(Template $template): void
     {
-        $template->loadCount([
-            'variables',
-            'variables as approved_count' => fn($q) => $q->where('approval_status', 'approved'),
-        ]);
-
-        $total    = $template->variables_count;
-        $approved = $template->approved_count;
+        $base     = $template->variables();
+        $total    = $base->count();
+        $approved = (clone $base)->where('approval_status', 'approved')->count();
 
         $score = $total > 0 ? (int) round(($approved / $total) * 100) : 0;
 

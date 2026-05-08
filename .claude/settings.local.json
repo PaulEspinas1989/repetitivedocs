@@ -38,7 +38,8 @@
       "Skill(update-config:*)",
       "Bash(ssh root@139.162.61.79 \"cat /var/www/referralbunny/.env 2>/dev/null | grep -i mail || echo 'not found'\")",
       "Bash(composer show *)",
-      "Bash(ssh root@139.162.61.79 \"grep -E 'LOG_CHANNEL|LOG_STACK|LOG_LEVEL' /var/www/repetitivedocs/.env\")"
+      "Bash(ssh root@139.162.61.79 \"grep -E 'LOG_CHANNEL|LOG_STACK|LOG_LEVEL' /var/www/repetitivedocs/.env\")",
+      "Bash(ssh root@139.162.61.79 \"grep -n 'production.ERROR' /var/www/repetitivedocs/storage/logs/laravel.log | tail -5\")"
     ],
     "additionalDirectories": [
       "C:\\laragon\\bin\\php\\php-8.3.30-Win32-vs16-x64",
