@@ -70,13 +70,14 @@ class VariableDetectionService
                     $allPositions = $this->findAllTextPositions($pdfTextElements, $exampleValue);
                 }
 
-                // The legacy text_positions field keeps the first position for backward compat
                 $textPositions = !empty($allPositions) ? $allPositions : null;
 
-                // Merge AI-returned occurrence metadata if present.
-                // Guard: AI may return "occurrences": 3 (integer) instead of an array;
-                // iterating over a non-array throws TypeError.
+                // Guard: AI may return "occurrences": 3 (integer) instead of an array
                 $aiOccurrences = is_array($v['occurrences'] ?? null) ? $v['occurrences'] : [];
+
+                // Confidence below 0.7 → flag for needs_review
+                $confidenceScore = (float) ($v['confidence_score'] ?? 1.0);
+                $needsReview     = $confidenceScore < 0.70;
 
                 $variable = TemplateVariable::create([
                     'template_id'         => $template->id,
@@ -94,21 +95,46 @@ class VariableDetectionService
                     'occurrences'         => $occurrences,
                     'semantic_type'       => $v['semantic_type'] ?? null,
                     'entity_role'         => $v['entity_role'] ?? null,
-                    'grouping_confidence' => isset($v['confidence_score'])
-                                            ? (int) round($v['confidence_score'] * 100)
-                                            : null,
+                    'grouping_confidence' => (int) round($confidenceScore * 100),
                     'grouping_reason'     => $v['grouping_reason'] ?? null,
+                    'needs_review'        => $needsReview,
                 ]);
 
-                // Create VariableOccurrence records — one per detected position
                 $this->createOccurrenceRecords(
-                    $variable,
-                    $template->id,
-                    $doc->workspace_id,
-                    $allPositions,
-                    $aiOccurrences,
-                    $exampleValue
+                    $variable, $template->id, $doc->workspace_id,
+                    $allPositions, $aiOccurrences, $exampleValue
                 );
+            }
+
+            // Store AI's "needs_review" uncertain candidates as additional template variables
+            $reviewCandidates = is_array($variables['needs_review_candidates'] ?? null)
+                ? $variables['needs_review_candidates']
+                : [];
+
+            $sortOrder = count($variableList) + 1;
+            foreach ($reviewCandidates as $candidate) {
+                $origText = $candidate['original_text'] ?? null;
+                if (empty($origText)) {
+                    continue;
+                }
+
+                TemplateVariable::create([
+                    'template_id'     => $template->id,
+                    'workspace_id'    => $doc->workspace_id,
+                    'name'            => Str::snake($candidate['suggested_display_name'] ?? 'field_' . $sortOrder),
+                    'label'           => $candidate['suggested_display_name'] ?? 'Unknown Field',
+                    'type'            => 'text',
+                    'description'     => $candidate['reason'] ?? null,
+                    'example_value'   => $origText,
+                    'is_required'     => false,
+                    'sort_order'      => $sortOrder++,
+                    'approval_status' => 'pending',
+                    'ai_suggested'    => true,
+                    'needs_review'    => true,
+                    'needs_review_reason' => $candidate['reason'] ?? null,
+                    'semantic_type'   => $candidate['suggested_semantic_type'] ?? null,
+                    'grouping_confidence' => $candidate['confidence'] === 'low' ? 40 : 60,
+                ]);
             }
 
             if ($doc->isDocx()) {
@@ -159,23 +185,31 @@ class VariableDetectionService
                     $ai = array_shift($aiByPage['any']);
                 }
 
+                $originalText  = $ai['original_text'] ?? $exampleValue ?? '';
+                $casingPattern = $pos['casing_pattern'] ?? $this->detectCasingPattern($originalText);
+
                 VariableOccurrence::create([
                     'template_variable_id' => $variable->id,
                     'template_id'          => $templateId,
                     'workspace_id'         => $workspaceId,
                     'page_number'          => $page,
-                    'original_text'        => $ai['original_text'] ?? $exampleValue,
+                    'original_text'        => $originalText,
                     'normalized_text'      => $ai['normalized_value'] ?? $this->normalizeText($exampleValue ?? ''),
-                    'prefix_text'          => $ai['prefix_text'] ?? null,
-                    'suffix_text'          => $ai['suffix_text'] ?? null,
+                    'prefix_text'          => $ai['prefix_text']  ?? null,
+                    'suffix_text'          => $ai['suffix_text']  ?? null,
                     'context_before'       => $ai['context_before'] ?? null,
-                    'context_after'        => $ai['context_after'] ?? null,
+                    'context_after'        => $ai['context_after']  ?? null,
                     'semantic_context'     => $ai['semantic_context'] ?? null,
-                    'replacement_strategy' => $ai['recommended_replacement_strategy'] ?? 'replace_exact_text_preserve_style',
+                    'replacement_strategy' => $ai['recommended_replacement_strategy']
+                                             ?? 'replace_exact_text_preserve_style',
                     'confidence_pct'       => isset($ai['confidence_score'])
-                                             ? (int) round($ai['confidence_score'] * 100)
-                                             : 100,
+                                             ? (int) round($ai['confidence_score'] * 100) : 100,
                     'status'               => 'active',
+                    // New detection metadata
+                    'source_area'          => $ai['source_area']   ?? $pos['source_area']  ?? 'body',
+                    'nearby_label'         => $ai['nearby_label']  ?? null,
+                    'casing_pattern'       => $casingPattern,
+                    'detection_source'     => 'pdf_position',
                     'bounding_box'         => [
                         'x_pct' => $pos['x_pct'],
                         'y_pct' => $pos['y_pct'],
@@ -185,36 +219,42 @@ class VariableDetectionService
                     'style_snapshot'       => [
                         'font_size'   => $pos['font_size']   ?? 10,
                         'font_color'  => $pos['font_color']  ?? '#000000',
-                        'font_family' => $pos['font_family'] ?? 'Helvetica',
+                        'font_family' => $pos['font_family'] ?? '',
                         'font_weight' => $pos['font_weight'] ?? 'normal',
                         'text_align'  => $pos['text_align']  ?? 'L',
                     ],
                 ]);
             }
         } elseif (!empty($aiOccurrences)) {
-            // PDF positions not available — store AI metadata only (DOCX or no pdftohtml)
             foreach ($aiOccurrences as $occ) {
+                $originalText  = $occ['original_text'] ?? $exampleValue ?? '';
+                $casingPattern = $this->detectCasingPattern($originalText);
+
                 VariableOccurrence::create([
                     'template_variable_id' => $variable->id,
                     'template_id'          => $templateId,
                     'workspace_id'         => $workspaceId,
                     'page_number'          => $occ['page_number'] ?? null,
-                    'original_text'        => $occ['original_text'] ?? $exampleValue,
+                    'original_text'        => $originalText,
                     'normalized_text'      => $occ['normalized_value'] ?? $this->normalizeText($exampleValue ?? ''),
-                    'prefix_text'          => $occ['prefix_text'] ?? null,
-                    'suffix_text'          => $occ['suffix_text'] ?? null,
+                    'prefix_text'          => $occ['prefix_text']  ?? null,
+                    'suffix_text'          => $occ['suffix_text']  ?? null,
                     'context_before'       => $occ['context_before'] ?? null,
-                    'context_after'        => $occ['context_after'] ?? null,
+                    'context_after'        => $occ['context_after']  ?? null,
                     'semantic_context'     => $occ['semantic_context'] ?? null,
-                    'replacement_strategy' => $occ['recommended_replacement_strategy'] ?? 'replace_exact_text_preserve_style',
+                    'replacement_strategy' => $occ['recommended_replacement_strategy']
+                                             ?? 'replace_exact_text_preserve_style',
                     'confidence_pct'       => isset($occ['confidence_score'])
-                                             ? (int) round($occ['confidence_score'] * 100)
-                                             : 100,
+                                             ? (int) round($occ['confidence_score'] * 100) : 100,
                     'status'               => 'active',
+                    // New detection metadata
+                    'source_area'          => $occ['source_area']  ?? 'body',
+                    'nearby_label'         => $occ['nearby_label'] ?? null,
+                    'casing_pattern'       => $occ['casing_pattern'] ?? $casingPattern,
+                    'detection_source'     => 'ai_occurrence',
                 ]);
             }
         } elseif (!empty($exampleValue)) {
-            // Minimum: one placeholder occurrence record so the UI can show it
             VariableOccurrence::create([
                 'template_variable_id' => $variable->id,
                 'template_id'          => $templateId,
@@ -224,8 +264,48 @@ class VariableDetectionService
                 'replacement_strategy' => 'replace_exact_text_preserve_style',
                 'confidence_pct'       => 80,
                 'status'               => 'active',
+                'casing_pattern'       => $this->detectCasingPattern($exampleValue),
+                'detection_source'     => 'fallback',
             ]);
         }
+    }
+
+    /**
+     * Detect the casing pattern of a text value.
+     * Used to preserve casing when rendering replacement text.
+     */
+    private function detectCasingPattern(string $text): string
+    {
+        $text = trim($text);
+        if (empty($text) || !preg_match('/[a-zA-Z]/', $text)) {
+            return 'mixed';
+        }
+
+        // All uppercase — no lowercase letters
+        if ($text === mb_strtoupper($text) && preg_match('/[A-Z]/', $text)) {
+            return 'uppercase';
+        }
+
+        // All lowercase — no uppercase letters
+        if ($text === mb_strtolower($text) && preg_match('/[a-z]/', $text)) {
+            return 'lowercase';
+        }
+
+        // Title case — every word (length > 1) starts with uppercase
+        $words  = preg_split('/\s+/', $text);
+        $isTitle = true;
+        foreach ($words as $word) {
+            $letters = preg_replace('/[^a-zA-Z]/', '', $word);
+            if (mb_strlen($letters) > 0 && mb_strtoupper($letters[0]) !== $letters[0]) {
+                $isTitle = false;
+                break;
+            }
+        }
+        if ($isTitle && count($words) > 0) {
+            return 'titlecase';
+        }
+
+        return 'mixed';
     }
 
     private function analyzeWithPdf(UploadedDocument $doc): array
@@ -318,19 +398,33 @@ class VariableDetectionService
                 $fontId = (string) $text['font'];
                 $font   = $allFonts[$fontId] ?? ['size' => 10, 'color' => '#000000', 'family' => '', 'weight' => 'normal'];
 
+                $rawText = trim((string) $text);
+                $topRaw  = (float) $text['top'];
+
+                // Heuristic: top 10% of page = header, bottom 10% = footer
+                $topPct     = $pageHeight > 0 ? ($topRaw / $pageHeight) : 0.5;
+                $sourceArea = 'body';
+                if ($topPct < 0.10) {
+                    $sourceArea = 'header';
+                } elseif ($topPct > 0.90) {
+                    $sourceArea = 'footer';
+                }
+
                 $elements[] = [
-                    'page'        => $pageNum,
-                    'top'         => (float) $text['top'],
-                    'left'        => (float) $text['left'],
-                    'width'       => (float) $text['width'],
-                    'height'      => (float) $text['height'],
-                    'page_width'  => $pageWidth,
-                    'page_height' => $pageHeight,
-                    'font_size'   => $font['size'],
-                    'font_color'  => $font['color'],
-                    'font_family' => $font['family'],
-                    'font_weight' => $font['weight'],
-                    'text'        => trim((string) $text),
+                    'page'           => $pageNum,
+                    'top'            => $topRaw,
+                    'left'           => (float) $text['left'],
+                    'width'          => (float) $text['width'],
+                    'height'         => (float) $text['height'],
+                    'page_width'     => $pageWidth,
+                    'page_height'    => $pageHeight,
+                    'font_size'      => $font['size'],
+                    'font_color'     => $font['color'],
+                    'font_family'    => $font['family'],
+                    'font_weight'    => $font['weight'],
+                    'text'           => $rawText,
+                    'source_area'    => $sourceArea,
+                    'casing_pattern' => $this->detectCasingPattern($rawText),
                 ];
             }
         }
@@ -442,19 +536,28 @@ class VariableDetectionService
                     $textAlign = 'R';
                 }
 
+                // Casing pattern from the original matched text (dominant element or full line)
+                $matchedText   = $isExactMatch ? $lineText : (string) ($dominantEl['text'] ?? $lineText);
+                $casingPattern = $this->detectCasingPattern($matchedText);
+
+                // Source area from the dominant element (header/footer/body detected during extraction)
+                $sourceArea = $dominantEl['source_area'] ?? 'body';
+
                 // Clamp all percentage values to [0, 1] so malformed PDFs with
                 // text elements outside page bounds don't push overlay off-page.
                 $positions[] = [
-                    'page'        => $pageNum,
-                    'x_pct'      => max(0, min(1, $left / $pw)),
-                    'y_pct'      => max(0, min(1, $top  / $ph)),
-                    'w_pct'      => max(0, min(1, ($right - $left) / $pw)),
-                    'h_pct'      => max(0, min(1, ($bottom - $top) / $ph)),
-                    'font_size'   => $dominantEl['font_size'],
-                    'font_color'  => $dominantEl['font_color'],
-                    'font_family' => $dominantEl['font_family'] ?? '',
-                    'font_weight' => $dominantEl['font_weight'] ?? 'normal',
-                    'text_align'  => $textAlign,
+                    'page'           => $pageNum,
+                    'x_pct'         => max(0, min(1, $left / $pw)),
+                    'y_pct'         => max(0, min(1, $top  / $ph)),
+                    'w_pct'         => max(0, min(1, ($right - $left) / $pw)),
+                    'h_pct'         => max(0, min(1, ($bottom - $top) / $ph)),
+                    'font_size'      => $dominantEl['font_size'],
+                    'font_color'     => $dominantEl['font_color'],
+                    'font_family'    => $dominantEl['font_family'] ?? '',
+                    'font_weight'    => $dominantEl['font_weight'] ?? 'normal',
+                    'text_align'     => $textAlign,
+                    'source_area'    => $sourceArea,
+                    'casing_pattern' => $casingPattern,
                 ];
                 // NOTE: no break — capture ALL matching lines on this page
             }
@@ -603,44 +706,60 @@ class VariableDetectionService
 
         $docTextField = $skipDocumentText
             ? ''
-            : "  \"document_text\": \"The complete plain text of the document, preserving paragraph breaks with newline characters. Keep all original text exactly as written.\",\n";
+            : "  \"document_text\": \"The complete plain text of the document, preserving paragraph breaks. Keep all original text exactly as written.\",\n";
 
         return <<<PROMPT
 You are an AI document analyzer for RepetitiveDocs, a document personalization platform.
 
-The document is called "{$templateName}". Your job is to:
-{$docTextInstruction}Find every piece of information that changes when this document is reused for a different person, date, organization, or transaction.
-
-CRITICAL: When the SAME real-world value appears multiple times (e.g., a mayor's name appears in the header, body, approval section, and signature block), create ONE variable with multiple occurrences — do NOT create separate variables for the same logical field.
+The document is called "{$templateName}". Your job is to find EVERY piece of information a user would need to change when reusing this document for a different person, organization, date, or transaction.
+{$docTextInstruction}
+HARD RULES:
+1. Do NOT omit variables just because they are not in brackets or obvious.
+2. Do NOT miss variables in headers, footers, tables, or signature blocks.
+3. Do NOT skip names under signature lines or above official titles.
+4. When the same real-world value appears multiple times, create ONE variable with multiple occurrences.
+5. Return uncertain candidates in "needs_review_candidates" — do NOT silently drop them.
 
 Return ONLY a valid JSON object with this exact structure (no markdown, no explanation):
 {
 {$docTextField}  "variables": [
     {
       "name": "snake_case_name",
-      "label": "Human Readable Label",
+      "label": "Human Readable Label (2-4 words)",
       "type": "text|date|number|currency|email|phone|address|select",
-      "description": "Brief description of what this field represents",
-      "example_value": "The canonical value (clean, without honorific prefix, e.g. 'Juan Dela Cruz' not 'HON. JUAN DELA CRUZ')",
+      "description": "What this field represents",
+      "example_value": "The clean canonical value WITHOUT honorific prefix (e.g. 'Juan Dela Cruz' NOT 'HON. JUAN DELA CRUZ')",
       "is_required": true,
       "sort_order": 1,
       "semantic_type": "person_name|org_name|date|currency|reference_number|address|phone|email|text",
       "entity_role": "mayor_signatory|recipient|company|employee|date_signed|amount|reference|location|other",
       "confidence_score": 0.95,
-      "grouping_reason": "Brief reason why multiple placements were grouped (if occurrences > 1)",
+      "grouping_reason": "Why multiple placements were grouped as one variable",
       "occurrences": [
         {
-          "original_text": "The EXACT text as it appears in this placement (e.g. 'HON. JUAN DELA CRUZ')",
-          "normalized_value": "Cleaned version without honorifics (e.g. 'Juan Dela Cruz')",
+          "original_text": "EXACT text as it appears (e.g. 'HON. JUAN DELA CRUZ')",
+          "normalized_value": "Clean version without honorifics (e.g. 'Juan Dela Cruz')",
           "prefix_text": "HON.",
           "suffix_text": "",
+          "casing_pattern": "uppercase|titlecase|lowercase|mixed",
           "page_number": 1,
-          "context_before": "Text directly before this value",
-          "context_after": "Text directly after this value (e.g. 'Municipal Mayor')",
-          "semantic_context": "signature_block|labeled_field|header|footer|body|approval_block",
-          "recommended_replacement_strategy": "replace_exact_text_preserve_style|replace_value_preserve_prefix|replace_signature_block_name"
+          "source_area": "body|header|footer|table|signature_block|labeled_field",
+          "nearby_label": "Text of nearest label (e.g. 'Approved by', 'Municipal Mayor')",
+          "context_before": "Short text directly before this value",
+          "context_after": "Short text directly after (e.g. 'Municipal Mayor')",
+          "semantic_context": "signature_block|labeled_field|header|footer|body|approval_block|table_cell",
+          "recommended_replacement_strategy": "replace_value_preserve_prefix|replace_exact_text_preserve_style|replace_signature_block_name"
         }
       ]
+    }
+  ],
+  "needs_review_candidates": [
+    {
+      "original_text": "Text found but uncertain if editable",
+      "suggested_display_name": "Suggested field name",
+      "reason": "Why this might be editable",
+      "suggested_semantic_type": "person_name|text|org_name|etc",
+      "confidence": "medium|low"
     }
   ],
   "summary": {
@@ -649,44 +768,51 @@ Return ONLY a valid JSON object with this exact structure (no markdown, no expla
   }
 }
 
-GROUPING RULES — apply these to determine when one variable should cover multiple placements:
-- If the same PERSON appears as "Juan Dela Cruz", "HON. JUAN DELA CRUZ", "Mayor Juan Dela Cruz", "Name of Mayor: Juan Dela Cruz" — these are ONE variable: Mayor Name
-- If the same ORG appears as "City of Masbate", "Masbate City" — these are ONE variable
-- If the same DATE appears in multiple formats — these are ONE variable
-- Group by REAL-WORLD IDENTITY, not by exact text match
+WHAT TO DETECT — include ALL of these when present:
+- Person names: recipient, applicant, client, employee, official names
+- Mayor / City Mayor / Municipal Mayor / Governor / Vice Mayor / Barangay Captain names
+- ALL CAPS official names in signature/approval blocks
+- Names above titles: "HON. JUAN DELA CRUZ" above "Municipal Mayor"
+- Names after "Approved by:", "Certified by:", "Signed by:", "Noted by:", "Prepared by:"
+- Names preceded by "Hon." or "Honorable"
+- Positions and titles that change: "Municipal Mayor", "Department Head", "OIC"
+- Organization names: LGU names, company names, municipality, city, province, barangay
+- Dates: document date, validity date, signing date, transaction date (any format)
+- Amounts: monetary values, fees, totals, balances
+- Reference numbers: control number, certificate number, invoice number, case number
+- Addresses: physical addresses, office locations
+- Table cell values that change: quantities, prices, descriptions in table rows
+- Header/footer values: page header organization name, footer reference
+- Label-value pairs: "Name: [value]", "Date: [value]", "Position: [value]"
+- Repeated values: if same text appears 3+ times, it likely changes per document
+- Signatories and their titles even if text seems "standard" — they change when staff changes
 
-MANDATORY SIGNATORY AND MAYOR DETECTION:
-You MUST detect and create variables for:
-1. Mayor / City Mayor / Municipal Mayor / Local Chief Executive names
-2. Any name appearing ABOVE a title like "Municipal Mayor", "City Mayor", "Governor", "Vice Mayor"
-3. Any name appearing after "Approved by:", "Certified by:", "Signed by:", "Noted by:", "Prepared by:"
-4. Any name in ALL CAPS that is near a title (signature block pattern)
-5. Names preceded by "Hon." or "Honorable"
-6. Names in signature/approval/certification blocks anywhere in the document
-7. Barangay Captain, Governor, Department Head names
+GROUPING RULES:
+- "Juan Dela Cruz", "HON. JUAN DELA CRUZ", "Mayor Juan Dela Cruz" → ONE variable (Mayor Name)
+- "Municipality of Milagros", "Milagros, Masbate", "MILAGROS" → likely ONE variable (Municipality Name)
+- Same date in different formats → ONE variable
+- Group by REAL-WORLD IDENTITY, not by exact text
 
-For mayor/signatory names:
-- example_value should be the CLEAN NAME ONLY (e.g., "Olga T. Kho") — strip "HON.", "Mayor", etc.
-- Each placement where the name appears differently is one occurrence
-- entity_role = "mayor_signatory" or appropriate role
-- semantic_type = "person_name"
+SIGNATORY/MAYOR DETECTION — MANDATORY:
+For any name in a signature/approval block:
+- source_area = "signature_block"
+- semantic_context = "signature_block"
+- entity_role = "mayor_signatory" for mayor/LCE names
+- example_value = CLEAN NAME ONLY (no "HON.", "Mayor", etc.)
+- prefix_text = "HON." or "Mayor" or similar (separate from clean name)
+- recommended_replacement_strategy = "replace_value_preserve_prefix"
 
-WHAT TO DETECT in variables array:
-- Full names of recipients, signatories, officials, clients, employees
-- Job titles and positions that change per document
-- Organization/LGU/company names
-- All dates (document date, validity date, signing date)
-- Monetary amounts and fees
-- Reference/case/document numbers
-- Physical addresses
-- Approval/signatory blocks (these ALWAYS change when re-using the document)
+CASING RULES:
+- If original is "JUAN DELA CRUZ" (all caps): casing_pattern = "uppercase"
+- If original is "Juan Dela Cruz": casing_pattern = "titlecase"
+- If original has mixed casing: casing_pattern = "mixed"
 
-Do NOT include: fixed legal boilerplate, static instruction text, table column headers, document titles that never change.
+NEEDS REVIEW CANDIDATES:
+If you find text that MIGHT be editable but you're not certain, add it to needs_review_candidates.
+Include: possible position titles, unclear abbreviations, text that looks like a value but context is ambiguous.
+Do NOT omit uncertain candidates — surface them for human review.
 
-For occurrences array: include ONE entry per placement where the value appears in the document.
-example_value = the canonical clean value (strip honorifics for comparison).
-
-Use snake_case names. Keep labels 2–4 words. sort_order = top-to-bottom reading order.
+Use snake_case for variable names. sort_order = top-to-bottom reading order.
 Return ONLY the JSON object — no explanation, no markdown fences.
 PROMPT;
     }
@@ -695,12 +821,26 @@ PROMPT;
     {
         $data = $this->ai->extractJson($response);
 
-        if (!$data || !isset($data['variables']) || !is_array($data['variables'])) {
+        // Accept both "variables" (current) and "canonical_variables" (future schema)
+        if (!$data) {
             $raw = $this->ai->extractText($response);
             \Illuminate\Support\Facades\Log::error('VariableDetection: unexpected AI response', [
                 'raw' => substr($raw, 0, 1000),
             ]);
             throw new \RuntimeException('AI returned an unexpected response format.');
+        }
+
+        // Normalize: prefer canonical_variables, fall back to variables
+        if (!isset($data['variables']) || !is_array($data['variables'])) {
+            if (isset($data['canonical_variables']) && is_array($data['canonical_variables'])) {
+                $data['variables'] = $data['canonical_variables'];
+            } else {
+                $raw = $this->ai->extractText($response);
+                \Illuminate\Support\Facades\Log::error('VariableDetection: no variables array in AI response', [
+                    'raw' => substr($raw, 0, 1000),
+                ]);
+                throw new \RuntimeException('AI returned an unexpected response format.');
+            }
         }
 
         return $data;

@@ -4,9 +4,10 @@
 
     @php
         $summary = $template->variableSummary();
-        $allVars       = $template->variables;
+        $allVars        = $template->variables;
         $repeatingVars  = $allVars->filter(fn($v) => ($v->occurrences ?: 1) > 1);
         $standaloneVars = $allVars->filter(fn($v) => ($v->occurrences ?: 1) <= 1);
+        $needsReviewVars = $allVars->filter(fn($v) => $v->needs_review);
 
         $categoryIcons = [
             'people'        => ['icon' => 'user',        'color' => '#2F6BFF', 'label' => 'People & names'],
@@ -75,6 +76,43 @@
         @endif
     </div>
 
+    {{-- Needs Review banner (shown when AI flagged uncertain candidates) --}}
+    @if($needsReviewVars->isNotEmpty())
+    <div class="mb-6 bg-warning/10 border border-warning/30 rounded-2xl p-5 flex items-start gap-4">
+        <x-icon name="alert-circle" class="w-6 h-6 text-warning flex-shrink-0 mt-0.5" />
+        <div class="flex-1 min-w-0">
+            <p class="text-sm font-semibold text-navy mb-1">
+                Loopi found {{ $needsReviewVars->count() }} possible field{{ $needsReviewVars->count() === 1 ? '' : 's' }} that may need your review
+            </p>
+            <p class="text-xs text-slate mb-3">
+                These were detected but Loopi isn't fully certain they're editable. Check them before generating.
+            </p>
+            <div class="space-y-1">
+                @foreach($needsReviewVars->take(5) as $reviewVar)
+                <div class="flex items-center gap-2 text-xs text-slate">
+                    <span class="w-1.5 h-1.5 rounded-full bg-warning flex-shrink-0"></span>
+                    <span class="font-medium text-navy">{{ $reviewVar->label }}</span>
+                    @if($reviewVar->example_value)
+                    <span class="text-muted">— e.g. {{ Str::limit($reviewVar->example_value, 50) }}</span>
+                    @endif
+                    @if($reviewVar->needs_review_reason)
+                    <span class="text-muted italic truncate">{{ Str::limit($reviewVar->needs_review_reason, 60) }}</span>
+                    @endif
+                </div>
+                @endforeach
+                @if($needsReviewVars->count() > 5)
+                <p class="text-xs text-muted pl-3">… and {{ $needsReviewVars->count() - 5 }} more in the Template Editor</p>
+                @endif
+            </div>
+            <a href="{{ route('templates.editor', $template->id) }}"
+               class="mt-3 inline-flex items-center gap-1.5 text-xs text-warning font-medium hover:underline">
+                <x-icon name="eye" class="w-3.5 h-3.5" />
+                Review in Template Editor
+            </a>
+        </div>
+    </div>
+    @endif
+
     {{-- Loopi guidance card --}}
     <div class="bg-gradient-to-br from-primary to-primary-dark rounded-2xl p-8 text-white mb-8">
         <div class="flex items-start gap-6">
@@ -82,9 +120,15 @@
                  class="w-28 h-28 object-contain flex-shrink-0 hidden sm:block"
                  style="mix-blend-mode:multiply;filter:brightness(0) invert(1)">
             <div>
-                <h2 class="text-2xl font-bold mb-3">Great job, Loopi found them all!</h2>
+                <h2 class="text-2xl font-bold mb-3">
+                    @if($needsReviewVars->isEmpty())
+                        Great job, Loopi found them all!
+                    @else
+                        Loopi found fields — a few need your review
+                    @endif
+                </h2>
                 <p class="text-white/90 mb-4 text-sm">
-                    I've identified all the fields that typically change in your document. You can accept all
+                    I've identified the fields that typically change in your document. You can accept all
                     suggested fields, review them one by one, or go straight to the editor.
                 </p>
                 <div class="flex flex-wrap gap-2">
@@ -92,8 +136,8 @@
                     @if($repeatingVars->count() > 0)
                     <span class="px-3 py-1 bg-white/20 rounded-full text-sm">{{ $repeatingVars->count() }} repeating</span>
                     @endif
-                    @if($standaloneVars->count() > 0)
-                    <span class="px-3 py-1 bg-white/20 rounded-full text-sm">{{ $standaloneVars->count() }} standalone</span>
+                    @if($needsReviewVars->count() > 0)
+                    <span class="px-3 py-1 bg-warning/40 rounded-full text-sm">{{ $needsReviewVars->count() }} needs review</span>
                     @endif
                     <span class="px-3 py-1 bg-white/20 rounded-full text-sm">Template: {{ $template->name }}</span>
                 </div>

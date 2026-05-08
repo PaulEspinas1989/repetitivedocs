@@ -260,9 +260,20 @@ class DocumentGenerationService
                         $pdf->SetFont('Helvetica', $fontStyle, $fontSize);
                         $pdf->SetXY($x, $y);
 
-                        // Transliterate UTF-8 to ISO-8859-1 for FPDF
+                        // ── Style-preserving rendering ──────────────────────────────
+                        // Step 1: Transliterate UTF-8 → ISO-8859-1 for FPDF
                         $converted = @iconv('UTF-8', 'ISO-8859-1//TRANSLIT//IGNORE', $newValue);
                         $display   = ($converted !== false && $converted !== '') ? $converted : $newValue;
+
+                        // Step 2: Apply casing from the original occurrence
+                        // If original was ALL CAPS, render replacement all caps.
+                        // If original was Title Case, render replacement in title case.
+                        $display = $this->applyCasingFromOccurrence($display, $pos);
+
+                        // Step 3: Re-apply prefix/suffix from the original occurrence
+                        // Each occurrence can have a different prefix (HON., Mayor, Gov., etc.)
+                        // These are preserved per-occurrence so each placement renders correctly.
+                        $display = $this->applyPrefixSuffix($display, $pos);
 
                         // Alignment: C for centered text (signature blocks), L otherwise
                         $align = strtoupper($pos['text_align'] ?? 'L');
@@ -484,5 +495,74 @@ HTML;
         $text = preg_replace('/\n{3,}/', "\n\n", $text);
 
         return trim($text);
+    }
+
+    // ── Style-preserving rendering helpers ───────────────────────────
+
+    /**
+     * Apply the casing pattern stored in the occurrence position to the replacement value.
+     *
+     * If the original text was "JUAN DELA CRUZ" (all caps), the replacement "Maria Santos"
+     * should render as "MARIA SANTOS" so the document styling is preserved.
+     *
+     * If the original was "Juan Dela Cruz" (title case), the replacement should be "Maria Santos".
+     * If the original was "mixed" or unclear, render as-is (trust user input).
+     */
+    private function applyCasingFromOccurrence(string $value, array $pos): string
+    {
+        $casingPattern = $pos['casing_pattern'] ?? 'mixed';
+
+        // Also derive casing from original_text if casing_pattern is missing
+        if ($casingPattern === 'mixed' && !empty($pos['original_text'])) {
+            $orig = trim($pos['original_text']);
+            // Strip prefix for casing detection
+            $prefix = trim($pos['prefix_text'] ?? '');
+            if ($prefix && str_starts_with($orig, $prefix)) {
+                $orig = trim(mb_substr($orig, mb_strlen($prefix)));
+            }
+            // If original core has only uppercase letters, treat as uppercase
+            if ($orig === mb_strtoupper($orig) && preg_match('/[A-Z]/', $orig)) {
+                $casingPattern = 'uppercase';
+            }
+        }
+
+        return match ($casingPattern) {
+            'uppercase' => mb_strtoupper($value),
+            'lowercase' => mb_strtolower($value),
+            'titlecase' => mb_convert_case($value, MB_CASE_TITLE, 'UTF-8'),
+            default     => $value, // 'mixed' or unknown → trust user input
+        };
+    }
+
+    /**
+     * Re-apply the prefix and suffix from the original occurrence to the replacement value.
+     *
+     * Example:
+     *   Original: "HON. JUAN DELA CRUZ"  prefix_text: "HON."
+     *   New value after casing: "MARIA SANTOS"
+     *   Result: "HON. MARIA SANTOS"
+     *
+     * Example:
+     *   Original: "Mayor Juan Dela Cruz"  prefix_text: "Mayor"
+     *   New value: "Maria Santos"
+     *   Result: "Mayor Maria Santos"
+     *
+     * The prefix/suffix are stored per-occurrence so each placement renders
+     * with its own local formatting (some may have "HON.", others just the name).
+     */
+    private function applyPrefixSuffix(string $value, array $pos): string
+    {
+        $prefix = trim($pos['prefix_text'] ?? '');
+        $suffix = trim($pos['suffix_text'] ?? '');
+
+        if ($prefix !== '') {
+            // Apply casing to prefix as well (preserve original prefix casing)
+            $value = $prefix . ' ' . $value;
+        }
+        if ($suffix !== '') {
+            $value = $value . ' ' . $suffix;
+        }
+
+        return $value;
     }
 }

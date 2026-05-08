@@ -32,11 +32,13 @@ class TemplateVariable extends Model
         'text_positions', 'occurrences',
         'canonical_variable_id', 'semantic_type', 'entity_role',
         'grouping_confidence', 'grouping_reason',
-        // Value-mode fields (new)
+        // Value-mode fields
         'value_mode', 'fixed_value',
         'fixed_value_set_by_generation_id', 'fixed_value_set_by_user_id', 'fixed_value_set_at',
         'show_when_fixed', 'ai_suggested_mode', 'ai_suggested_mode_reason',
         'user_confirmed_mode', 'is_sensitive_flag',
+        // Review flags
+        'needs_review', 'needs_review_reason',
     ];
 
     protected $casts = [
@@ -52,6 +54,8 @@ class TemplateVariable extends Model
         'user_confirmed_mode'   => 'boolean',
         'is_sensitive_flag'     => 'boolean',
         'fixed_value_set_at'    => 'datetime',
+        // Review casts
+        'needs_review'          => 'boolean',
     ];
 
     public function isRepeating(): bool
@@ -153,19 +157,26 @@ class TemplateVariable extends Model
                 ->all();
         }
 
-        // Normalise legacy positions to guarantee all keys exist
+        // Normalise legacy positions — guarantee all keys (including new rendering context)
         return collect($this->text_positions ?? [])
             ->map(fn($pos) => [
-                'page'        => (int)    ($pos['page']        ?? 1),
-                'x_pct'      => (float)  ($pos['x_pct']       ?? 0),
-                'y_pct'      => (float)  ($pos['y_pct']        ?? 0),
-                'w_pct'      => (float)  ($pos['w_pct']        ?? 0),
-                'h_pct'      => (float)  ($pos['h_pct']        ?? 0),
-                'font_size'   => (float)  ($pos['font_size']   ?? 10),
-                'font_color'  => (string) ($pos['font_color']  ?? '#000000'),
-                'font_family' => (string) ($pos['font_family'] ?? ''),
-                'font_weight' => (string) ($pos['font_weight'] ?? 'normal'),
-                'text_align'  => (string) ($pos['text_align']  ?? 'L'),
+                'page'             => (int)    ($pos['page']             ?? 1),
+                'x_pct'           => (float)  ($pos['x_pct']            ?? 0),
+                'y_pct'           => (float)  ($pos['y_pct']            ?? 0),
+                'w_pct'           => (float)  ($pos['w_pct']            ?? 0),
+                'h_pct'           => (float)  ($pos['h_pct']            ?? 0),
+                'font_size'        => (float)  ($pos['font_size']        ?? 10),
+                'font_color'       => (string) ($pos['font_color']       ?? '#000000'),
+                'font_family'      => (string) ($pos['font_family']      ?? ''),
+                'font_weight'      => (string) ($pos['font_weight']      ?? 'normal'),
+                'text_align'       => (string) ($pos['text_align']       ?? 'L'),
+                // Rendering context — may not be in legacy records; safe defaults applied
+                'prefix_text'      => (string) ($pos['prefix_text']      ?? ''),
+                'suffix_text'      => (string) ($pos['suffix_text']      ?? ''),
+                'original_text'    => (string) ($pos['original_text']    ?? ''),
+                'casing_pattern'   => (string) ($pos['casing_pattern']   ?? 'mixed'),
+                'source_area'      => (string) ($pos['source_area']      ?? 'body'),
+                'semantic_context' => (string) ($pos['semantic_context'] ?? ''),
             ])
             ->all();
     }
