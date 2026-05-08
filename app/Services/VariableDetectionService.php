@@ -195,61 +195,97 @@ class VariableDetectionService
     private function findTextPositions(array $elements, string $search): ?array
     {
         $search = trim($search);
-        if (empty($search)) {
+
+        // Don't match short values (< 5 chars) as substrings — too many false positives
+        if (empty($search) || strlen($search) < 5) {
             return null;
         }
 
         $positions = [];
-
-        // Group elements by page and approximate line (top ± 3px)
         $pages = [];
         foreach ($elements as $el) {
             $pages[$el['page']][] = $el;
         }
 
         foreach ($pages as $pageNum => $pageElements) {
-            // Sort by top then left
             usort($pageElements, fn($a, $b) => $a['top'] <=> $b['top'] ?: $a['left'] <=> $b['left']);
 
-            // Build lines by grouping elements with similar top values
+            // Group into lines (elements within 3px vertically)
             $lines = [];
             foreach ($pageElements as $el) {
-                $matched = false;
+                $placed = false;
                 foreach ($lines as &$line) {
                     if (abs($el['top'] - $line[0]['top']) <= 3) {
                         $line[] = $el;
-                        $matched = true;
+                        $placed = true;
                         break;
                     }
                 }
-                if (!$matched) {
+                unset($line);
+                if (!$placed) {
                     $lines[] = [$el];
                 }
             }
 
             foreach ($lines as $line) {
                 usort($line, fn($a, $b) => $a['left'] <=> $b['left']);
-                $lineText = implode('', array_column($line, 'text'));
+                $lineText = trim(implode('', array_column($line, 'text')));
 
-                if (stripos($lineText, $search) !== false) {
+                // Require a strong match: the search value must be most of the line
+                // or the line must be contained within the search value
+                $normalizedLine   = preg_replace('/\s+/', ' ', $lineText);
+                $normalizedSearch = preg_replace('/\s+/', ' ', $search);
+
+                $isExactMatch    = strcasecmp($normalizedLine, $normalizedSearch) === 0;
+                $isContainedIn   = stripos($normalizedLine, $normalizedSearch) !== false
+                                   && (strlen($normalizedSearch) / max(strlen($normalizedLine), 1)) >= 0.6;
+
+                if (!$isExactMatch && !$isContainedIn) {
+                    continue;
+                }
+
+                $pw = $line[0]['page_width'];
+                $ph = $line[0]['page_height'];
+
+                // Calculate the bounding box of just the matching portion
+                if ($isExactMatch) {
                     $left   = min(array_column($line, 'left'));
                     $right  = max(array_map(fn($e) => $e['left'] + $e['width'], $line));
                     $top    = min(array_column($line, 'top'));
                     $bottom = max(array_map(fn($e) => $e['top'] + $e['height'], $line));
-
-                    $pw = $line[0]['page_width'];
-                    $ph = $line[0]['page_height'];
-
-                    $positions[] = [
-                        'page'        => $pageNum,
-                        'x_pct'       => $left / $pw,
-                        'y_pct'       => $top  / $ph,
-                        'w_pct'       => ($right - $left) / $pw,
-                        'h_pct'       => ($bottom - $top) / $ph,
-                        'font_size'   => $line[0]['font_size'],
-                        'font_color'  => $line[0]['font_color'],
-                    ];
+                } else {
+                    // Find the sub-elements that make up the matching portion
+                    $matchLeft = PHP_INT_MAX;
+                    $matchRight = 0;
+                    $runningText = '';
+                    $matchStart = stripos($normalizedLine, $normalizedSearch);
+                    foreach ($line as $el) {
+                        $elStart = strlen($runningText);
+                        $elEnd   = $elStart + strlen($el['text']);
+                        if ($elEnd > $matchStart && $elStart < $matchStart + strlen($normalizedSearch)) {
+                            $matchLeft  = min($matchLeft, $el['left']);
+                            $matchRight = max($matchRight, $el['left'] + $el['width']);
+                        }
+                        $runningText .= $el['text'];
+                    }
+                    $left   = $matchLeft === PHP_INT_MAX ? min(array_column($line, 'left')) : $matchLeft;
+                    $right  = $matchRight ?: max(array_map(fn($e) => $e['left'] + $e['width'], $line));
+                    $top    = min(array_column($line, 'top'));
+                    $bottom = max(array_map(fn($e) => $e['top'] + $e['height'], $line));
                 }
+
+                $positions[] = [
+                    'page'       => $pageNum,
+                    'x_pct'      => $left / $pw,
+                    'y_pct'      => $top  / $ph,
+                    'w_pct'      => ($right - $left) / $pw,
+                    'h_pct'      => ($bottom - $top) / $ph,
+                    'font_size'  => $line[0]['font_size'],
+                    'font_color' => $line[0]['font_color'],
+                ];
+
+                // Stop after finding the first clear match per page to avoid false duplicates
+                break;
             }
         }
 

@@ -181,16 +181,16 @@ class DocumentGenerationService
                         $w = max((float) $pos['w_pct'] * 210, 10);
                         $h = max((float) $pos['h_pct'] * 297, 4);
 
-                        // White rectangle to erase old value
+                        // White rectangle sized precisely to the original text block
                         $pdf->SetFillColor(255, 255, 255);
-                        $pdf->Rect($x, $y, $w + 2, $h + 1, 'F');
+                        $pdf->Rect($x, $y, $w, $h, 'F');
 
-                        // Write new value at same position
+                        // Write new value at same position with same font size
                         $fontSize = max((float) ($pos['font_size'] ?? 10), 6);
                         $pdf->SetFont('Helvetica', '', $fontSize);
                         $pdf->SetTextColor(0, 0, 0);
                         $pdf->SetXY($x, $y);
-                        $pdf->Cell($w + 2, $h + 1, $newValue, 0, 0, 'L');
+                        $pdf->Cell($w, $h, $newValue, 0, 0, 'L');
                     }
                 }
             }
