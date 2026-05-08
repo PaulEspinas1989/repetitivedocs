@@ -219,12 +219,12 @@ class VariableDetectionService
         foreach ($pages as $pageNum => $pageElements) {
             usort($pageElements, fn($a, $b) => $a['top'] <=> $b['top'] ?: $a['left'] <=> $b['left']);
 
-            // Group into lines (elements within 3px vertically)
+            // Group into lines (elements within 5px vertically — accommodates mixed font sizes)
             $lines = [];
             foreach ($pageElements as $el) {
                 $placed = false;
                 foreach ($lines as &$line) {
-                    if (abs($el['top'] - $line[0]['top']) <= 3) {
+                    if (abs($el['top'] - $line[0]['top']) <= 5) {
                         $line[] = $el;
                         $placed = true;
                         break;

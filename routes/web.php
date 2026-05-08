@@ -58,6 +58,10 @@ Route::middleware(['auth', 'workspace'])->group(function () {
 
     // ── Template: approve all variables ──────────────────────
     Route::post('/templates/{template}/approve-all', function (Template $template) {
+        $workspaceIds = auth()->user()->workspaces()->pluck('workspaces.id')->toArray();
+        if (!in_array($template->workspace_id, $workspaceIds)) {
+            abort(403);
+        }
         $template->variables()->update(['approval_status' => 'approved']);
         return redirect()->route('templates.editor', $template->id);
     })->name('templates.approve-all');

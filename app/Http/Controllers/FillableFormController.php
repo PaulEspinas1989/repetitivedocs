@@ -42,14 +42,23 @@ class FillableFormController extends Controller
                 $rule[] = 'email';
             } elseif ($var->type === 'date') {
                 $rule = $var->is_required ? ['required', 'date'] : ['nullable', 'date'];
-            } elseif (in_array($var->type, ['number', 'currency'])) {
+            } elseif ($var->type === 'number') {
+                // number fields use HTML number input — validate as numeric
                 $rule = $var->is_required ? ['required', 'numeric'] : ['nullable', 'numeric'];
             }
+            // currency stays as string — user may enter "1,000,000" with commas
             $rules['fields.' . $var->name] = $rule;
         }
 
         $validated = $request->validate($rules);
         $values    = $validated['fields'] ?? [];
+
+        // Sanitize currency fields: strip peso sign and commas so they store as plain numbers
+        foreach ($template->approvedVariables as $var) {
+            if ($var->type === 'currency' && isset($values[$var->name])) {
+                $values[$var->name] = preg_replace('/[₱,\s]/', '', $values[$var->name]);
+            }
+        }
 
         try {
             $generated = $this->generator->generate($template, $values);

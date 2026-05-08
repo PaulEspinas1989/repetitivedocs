@@ -11,29 +11,50 @@
                  this.step = i + 1;
              }
 
-             // Call the analysis endpoint
-             try {
-                 const res = await fetch('{{ route('documents.analyze', $document->id) }}', {
-                     method: 'POST',
-                     headers: {
-                         'Content-Type': 'application/json',
-                         'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
-                         'Accept': 'application/json',
-                     }
-                 });
-
-                 const data = await res.json();
-
-                 if (data.success && data.redirect) {
-                     this.step = 4;
-                     await new Promise(r => setTimeout(r, 500));
-                     window.location.href = data.redirect;
-                 } else {
-                     this.error = data.message || 'Analysis failed. Please try again.';
-                 }
-             } catch (e) {
-                 this.error = 'Network error. Please check your connection and try again.';
+             const csrfMeta = document.querySelector('meta[name=csrf-token]');
+             if (!csrfMeta) {
+                 this.error = 'Session error. Please refresh the page and try again.';
+                 return;
              }
+
+             const endpoint = '{{ route('documents.analyze', $document->id) }}';
+             const headers  = {
+                 'Content-Type': 'application/json',
+                 'X-CSRF-TOKEN': csrfMeta.content,
+                 'Accept': 'application/json',
+             };
+
+             // Retry loop — handles 202 (still processing) gracefully
+             const maxRetries = 40;
+             for (let attempt = 0; attempt < maxRetries; attempt++) {
+                 try {
+                     const res  = await fetch(endpoint, { method: 'POST', headers });
+                     const data = await res.json();
+
+                     if (data.success && data.redirect) {
+                         this.step = 4;
+                         await new Promise(r => setTimeout(r, 500));
+                         window.location.href = data.redirect;
+                         return;
+                     }
+
+                     if (res.status === 202) {
+                         // Still processing — wait 3 seconds and retry
+                         await new Promise(r => setTimeout(r, 3000));
+                         continue;
+                     }
+
+                     // Server returned an error
+                     this.error = data.message || 'Analysis failed. Please try again.';
+                     return;
+
+                 } catch (e) {
+                     this.error = 'Network error. Please check your connection and try again.';
+                     return;
+                 }
+             }
+
+             this.error = 'Analysis is taking too long. Please try uploading again.';
          }
      }"
      x-init="startAnalysis()">

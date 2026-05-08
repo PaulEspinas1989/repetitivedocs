@@ -206,9 +206,13 @@ class DocumentGenerationService
                         $pdf->SetFillColor(255, 255, 255);
                         $pdf->Rect($x, $y, $w, $h, 'F');
 
-                        // Resolve font color from position data
+                        // Resolve font color — expand 3-digit shorthand, default black
                         $hexColor = ltrim($pos['font_color'] ?? '#000000', '#');
-                        if (strlen($hexColor) === 6) {
+                        if (strlen($hexColor) === 3) {
+                            // Expand #abc → #aabbcc
+                            $hexColor = $hexColor[0].$hexColor[0].$hexColor[1].$hexColor[1].$hexColor[2].$hexColor[2];
+                        }
+                        if (strlen($hexColor) === 6 && ctype_xdigit($hexColor)) {
                             $pdf->SetTextColor(
                                 hexdec(substr($hexColor, 0, 2)),
                                 hexdec(substr($hexColor, 2, 2)),
