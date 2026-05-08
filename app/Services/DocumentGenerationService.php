@@ -155,7 +155,14 @@ class DocumentGenerationService
             $initMmW = $firstSize[0] * 25.4 / 150;
             $initMmH = $firstSize[1] * 25.4 / 150;
 
-            $pdf = new \FPDF('P', 'mm', [$initMmW, $initMmH]);
+            // Minimal FPDF subclass that zeroes out the ~1mm horizontal cell margin
+            // FPDF default cMargin ≈ 1mm causes all text overlays to render 1mm too far right
+            $pdf = new class('P', 'mm', [$initMmW, $initMmH]) extends \FPDF {
+                public function __construct($orientation, $unit, $size) {
+                    parent::__construct($orientation, $unit, $size);
+                    $this->cMargin = 0;
+                }
+            };
             $pdf->SetAutoPageBreak(false);
             $pdf->SetMargins(0, 0, 0);
 

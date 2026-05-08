@@ -159,25 +159,29 @@ class VariableDetectionService
             return [];
         }
 
-        $elements = [];
+        // pdftohtml places fontspec elements on whatever page the font first appears.
+        // Pages 2+ reference IDs declared on earlier pages, so we need a global dict.
+        // First pass: collect ALL fontspecs across all pages.
+        $allFonts = [];
+        foreach ($xml->page as $page) {
+            foreach ($page->fontspec as $fs) {
+                $allFonts[(string) $fs['id']] = [
+                    'size'  => (float) $fs['size'],
+                    'color' => (string) $fs['color'],
+                ];
+            }
+        }
 
+        // Second pass: extract text elements using the global font map.
+        $elements = [];
         foreach ($xml->page as $page) {
             $pageNum    = (int) $page['number'];
             $pageWidth  = (float) ($page['width']  ?: 595);
             $pageHeight = (float) ($page['height'] ?: 842);
 
-            // Scope fontspecs per page — pdftohtml may reuse IDs across pages
-            $pageFonts = [];
-            foreach ($page->fontspec as $fs) {
-                $pageFonts[(string) $fs['id']] = [
-                    'size'  => (float) $fs['size'],
-                    'color' => (string) $fs['color'],
-                ];
-            }
-
             foreach ($page->text as $text) {
                 $fontId = (string) $text['font'];
-                $font   = $pageFonts[$fontId] ?? ['size' => 10, 'color' => '#000000'];
+                $font   = $allFonts[$fontId] ?? ['size' => 10, 'color' => '#000000'];
 
                 $elements[] = [
                     'page'        => $pageNum,
