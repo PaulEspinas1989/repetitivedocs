@@ -1,5 +1,32 @@
 <x-layouts.app title="{{ $template->name }} — Template Editor — RepetitiveDocs">
-<div class="flex flex-col h-full" x-data="{ activeTab: 'pending' }">
+<div class="flex flex-col h-full"
+     x-data="{
+         activeTab: '{{ $needs_review->isNotEmpty() ? 'needs_review' : 'pending' }}',
+         counts: {
+             pending:      {{ $pending->count() }},
+             needs_review: {{ $needs_review->count() }},
+             approved:     {{ $approved->count() }},
+             rejected:     {{ $rejected->count() }},
+         },
+         readiness: {{ $readiness }},
+     }"
+     @rd-status-change.window="
+         const e = $event.detail;
+         if (e.counts) {
+             counts.pending      = e.counts.pending;
+             counts.needs_review = e.counts.needs_review;
+             counts.approved     = e.counts.approved;
+             counts.rejected     = e.counts.rejected;
+         }
+         if (e.readiness !== undefined) readiness = e.readiness;
+         // Surface a brief non-intrusive toast via the global system
+         if (typeof window.rdToast === 'function') {
+             window.rdToast(e.label
+                 ? '&quot;' + e.label + '&quot; ' + (e.to === 'approved' ? 'approved.' : e.to === 'rejected' ? 'rejected.' : 'updated.')
+                 : 'Field updated.', 'success');
+         }
+     "
+>
 
     {{-- ── Top bar ────────────────────────────────────────────── --}}
     <div class="bg-white border-b border-line px-6 py-4 flex items-center justify-between flex-shrink-0">
@@ -44,32 +71,65 @@
         {{-- ── Left: Variable list ────────────────────────────── --}}
         <div class="flex-1 flex flex-col overflow-hidden">
 
-            {{-- Tab bar --}}
+            {{-- Tab bar — counts update reactively via rd-status-change events --}}
             <div class="bg-white border-b border-line px-6 pt-4">
-                <div class="flex gap-1 bg-blue-soft p-1 rounded-xl w-fit">
-                    @foreach([
-                        ['key'=>'pending',  'label'=>'Pending',  'count'=>$pending->count(),  'color'=>'bg-primary'],
-                        ['key'=>'approved', 'label'=>'Approved', 'count'=>$approved->count(), 'color'=>'bg-success'],
-                        ['key'=>'rejected', 'label'=>'Rejected', 'count'=>$rejected->count(), 'color'=>'bg-danger'],
-                        ['key'=>'all',      'label'=>'All',      'count'=>$pending->count()+$approved->count()+$rejected->count(), 'color'=>'bg-slate'],
-                    ] as $tab)
-                    <button @click="activeTab = '{{ $tab['key'] }}'"
-                            :class="activeTab === '{{ $tab['key'] }}' ? 'bg-white text-navy shadow-sm' : 'text-slate hover:text-navy'"
-                            class="px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2">
-                        {{ $tab['label'] }}
-                        @if($tab['count'] > 0)
-                        <span class="px-1.5 py-0.5 {{ $tab['color'] }} text-white rounded-full text-xs leading-none">
-                            {{ $tab['count'] }}
-                        </span>
-                        @endif
+                <div class="flex gap-1 bg-blue-soft p-1 rounded-xl w-fit overflow-x-auto">
+
+                    {{-- Pending tab --}}
+                    <button @click="activeTab = 'pending'"
+                            :class="activeTab === 'pending' ? 'bg-white text-navy shadow-sm' : 'text-slate hover:text-navy'"
+                            class="px-3 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 whitespace-nowrap">
+                        Pending
+                        <span x-show="counts.pending > 0"
+                              class="px-1.5 py-0.5 bg-primary text-white rounded-full text-xs leading-none"
+                              x-text="counts.pending"></span>
                     </button>
-                    @endforeach
+
+                    {{-- Needs Review tab — shown only when AI flagged uncertain variables --}}
+                    @if($needs_review->isNotEmpty())
+                    <button @click="activeTab = 'needs_review'"
+                            :class="activeTab === 'needs_review' ? 'bg-white text-navy shadow-sm' : 'text-slate hover:text-navy'"
+                            class="px-3 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 whitespace-nowrap">
+                        <x-icon name="alert-circle" class="w-3.5 h-3.5 text-warning" />
+                        Needs Review
+                        <span x-show="counts.needs_review > 0"
+                              class="px-1.5 py-0.5 bg-warning text-white rounded-full text-xs leading-none"
+                              x-text="counts.needs_review"></span>
+                    </button>
+                    @endif
+
+                    {{-- Approved tab --}}
+                    <button @click="activeTab = 'approved'"
+                            :class="activeTab === 'approved' ? 'bg-white text-navy shadow-sm' : 'text-slate hover:text-navy'"
+                            class="px-3 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 whitespace-nowrap">
+                        Approved
+                        <span x-show="counts.approved > 0"
+                              class="px-1.5 py-0.5 bg-success text-white rounded-full text-xs leading-none"
+                              x-text="counts.approved"></span>
+                    </button>
+
+                    {{-- Rejected tab --}}
+                    <button @click="activeTab = 'rejected'"
+                            :class="activeTab === 'rejected' ? 'bg-white text-navy shadow-sm' : 'text-slate hover:text-navy'"
+                            class="px-3 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 whitespace-nowrap">
+                        Rejected
+                        <span x-show="counts.rejected > 0"
+                              class="px-1.5 py-0.5 bg-danger text-white rounded-full text-xs leading-none"
+                              x-text="counts.rejected"></span>
+                    </button>
+
+                    {{-- All tab --}}
+                    <button @click="activeTab = 'all'"
+                            :class="activeTab === 'all' ? 'bg-white text-navy shadow-sm' : 'text-slate hover:text-navy'"
+                            class="px-3 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap">
+                        All
+                    </button>
                 </div>
 
                 {{-- Approve all pending --}}
                 @if($pending->count() > 0)
-                <div class="pb-3 mt-3 flex items-center justify-between">
-                    <p class="text-xs text-muted">{{ $pending->count() }} fields waiting for review</p>
+                <div class="pb-3 mt-3 flex items-center justify-between" x-show="activeTab === 'pending'">
+                    <p class="text-xs text-muted" x-text="counts.pending + ' fields waiting for review'"></p>
                     <form method="POST" action="{{ route('templates.editor.approve-all', $template->id) }}">
                         @csrf
                         <button type="submit" class="text-xs text-primary hover:underline font-medium"
@@ -83,6 +143,33 @@
 
             {{-- Variable cards --}}
             <div class="flex-1 overflow-y-auto p-6">
+
+                {{-- ── Needs Review tab ─────────────────────────────────── --}}
+                <div x-show="activeTab === 'needs_review'">
+                    @if($needs_review->isEmpty())
+                    <div class="flex flex-col items-center py-16 text-center">
+                        <x-icon name="check-circle" class="w-12 h-12 text-success mb-4" />
+                        <p class="font-semibold text-navy">Nothing needs review</p>
+                        <p class="text-sm text-slate mt-1">Loopi is confident about all detected fields.</p>
+                    </div>
+                    @else
+                    <div class="mb-4 p-4 bg-warning/10 border border-warning/20 rounded-xl">
+                        <p class="text-sm font-medium text-navy flex items-center gap-2">
+                            <x-icon name="alert-circle" class="w-4 h-4 text-warning" />
+                            Loopi found these fields but isn't fully certain they're editable.
+                        </p>
+                        <p class="text-xs text-slate mt-1">
+                            Review them and approve the ones you want to include, or reject the ones Loopi got wrong.
+                            Your decisions help make future documents more accurate.
+                        </p>
+                    </div>
+                    <div class="space-y-3">
+                        @foreach($needs_review as $var)
+                        @include('partials.variable-card', ['var' => $var, 'template' => $template])
+                        @endforeach
+                    </div>
+                    @endif
+                </div>
 
                 {{-- Pending tab --}}
                 <div x-show="activeTab === 'pending'">

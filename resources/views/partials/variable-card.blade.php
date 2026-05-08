@@ -12,16 +12,97 @@
     $editingInit    = $thisCardHasErr ? 'true' : 'false';
     $currentMode    = $var->value_mode ?: 'ask_each_time';
     $pages          = collect($var->text_positions ?? [])->pluck('page')->unique()->filter()->sort()->values();
+
+    // Routes for fetch() calls — evaluated server-side once, safe in Alpine
+    $approveUrl = route('templates.variables.approve', [$template->id, $var->id]);
+    $rejectUrl  = route('templates.variables.reject',  [$template->id, $var->id]);
+    $undoUrl    = route('templates.variables.undo',    [$template->id, $var->id]);
+    $updateUrl  = route('templates.variables.update',  [$template->id, $var->id]);
+    $modeUrl    = route('templates.variables.update-mode', [$template->id, $var->id]);
 @endphp
 {{--
-  x-data uses @json() for label/type — @json() HTML-encodes quotes so they
-  don't break the double-quoted attribute, and browsers decode them correctly
-  before Alpine parses the object.
---}}
-<div class="rounded-2xl border-2 {{ $statusClasses }} p-5 transition-all"
-     x-data="{ editing: {{ $editingInit }}, label: @json(old('label', $var->label)), type: @json(old('type', $var->type)), valueMode: @json($currentMode) }">
+  INLINE APPROVE/REJECT — no page reload, no scroll jump.
 
-    {{-- ── View mode ─────────────────────────────────────────────── --}}
+  Alpine x-data state machine:
+    status  : 'pending' | 'approved' | 'rejected'    — mirrors approval_status
+    loading : null | 'approving' | 'rejecting' | 'undoing'
+    error   : null | string
+
+  All approve/reject/undo actions call the JSON endpoint (Accept: application/json).
+  On success, the card updates in-place and dispatches 'rd-status-change' so the
+  tab badges update without page reload.
+
+  x-data uses @json() for label/type so quotes don't break the HTML attribute.
+--}}
+<div class="rounded-2xl border-2 transition-all duration-200"
+     :class="{
+         'border-success/30 bg-success/5': status === 'approved',
+         'border-danger/30 bg-danger/5':   status === 'rejected',
+         'border-line bg-white':           status === 'pending',
+     }"
+     x-data="{
+         status:    @json($var->approval_status),
+         loading:   null,
+         error:     null,
+         editing:   {{ $editingInit }},
+         label:     @json(old('label', $var->label)),
+         type:      @json(old('type', $var->type)),
+         valueMode: @json($currentMode),
+
+         csrf() {
+             return document.querySelector('meta[name=csrf-token]')?.content ?? '';
+         },
+
+         async doAction(action, url) {
+             if (this.loading) return;
+             this.loading = action;
+             this.error   = null;
+             try {
+                 const res  = await fetch(url, {
+                     method: 'POST',
+                     headers: {
+                         'Accept':       'application/json',
+                         'Content-Type': 'application/json',
+                         'X-CSRF-TOKEN': this.csrf(),
+                     },
+                 });
+                 const data = await res.json();
+                 if (!res.ok || !data.success) throw new Error(data.message ?? 'Request failed');
+                 this.status = data.status;
+                 // Notify parent so tab badges update without page reload
+                 this.$dispatch('rd-status-change', {
+                     from:     action === 'undo' ? (this.status === 'pending' ? data.status : 'pending') : this.status,
+                     to:       data.status,
+                     counts:   data.counts,
+                     readiness: data.readiness,
+                     label:    data.label,
+                 });
+             } catch (e) {
+                 this.error = e.message || 'Something went wrong. Please try again.';
+             } finally {
+                 this.loading = null;
+             }
+         },
+
+         approve() { this.doAction('approving', @json($approveUrl)); },
+         reject()  { this.doAction('rejecting', @json($rejectUrl));  },
+         undo()    { this.doAction('undoing',   @json($undoUrl));    },
+     }"
+     style="padding: 1.25rem;">
+
+    {{-- ── Inline error bar ─────────────────────────────────────────── --}}
+    <div x-show="error" x-cloak
+         class="mb-3 p-3 bg-danger/10 border border-danger/20 rounded-xl text-xs text-danger flex items-center gap-2"
+         role="alert" aria-live="polite">
+        <x-icon name="alert-circle" class="w-4 h-4 flex-shrink-0" />
+        <span x-text="error"></span>
+        <button type="button" @click="error = null"
+                class="ml-auto text-muted hover:text-danger transition-colors">
+            <x-icon name="x" class="w-3.5 h-3.5" />
+        </button>
+    </div>
+
+    {{-- ── View mode ─────────────────────────────────────────────────── --}}
     <div x-show="!editing">
 
         {{-- Header row: badges + edit button --}}
@@ -40,31 +121,37 @@
                 </span>
                 @endif
 
-                @if($var->approval_status === 'approved')
-                <span class="text-xs text-success font-medium flex items-center gap-1">
+                {{-- Approval status badge — updates reactively via Alpine --}}
+                <span x-show="status === 'approved'"
+                      class="text-xs text-success font-medium flex items-center gap-1" aria-live="polite">
                     <x-icon name="check-circle" class="w-3.5 h-3.5" /> Approved
                 </span>
-                @elseif($var->approval_status === 'rejected')
-                <span class="text-xs text-danger font-medium flex items-center gap-1">
+                <span x-show="status === 'rejected'"
+                      class="text-xs text-danger font-medium flex items-center gap-1" aria-live="polite">
                     <x-icon name="x" class="w-3.5 h-3.5" /> Rejected
                 </span>
-                @endif
 
                 {{-- Value mode badge --}}
-                @if($var->approval_status === 'approved' && $var->isFixed())
+                @if($var->isFixed())
                 <span class="px-2 py-0.5 bg-success/10 text-success text-xs rounded-full font-medium flex items-center gap-1">
                     <x-icon name="lock" class="w-3 h-3" /> Fixed
                 </span>
-                @elseif($var->approval_status === 'approved' && $var->isDefault())
+                @elseif($var->isDefault())
                 <span class="px-2 py-0.5 bg-blue-soft text-slate text-xs rounded-full font-medium">
                     Default
+                </span>
+                @endif
+
+                @if($var->needs_review ?? false)
+                <span class="px-2 py-0.5 bg-warning/10 text-warning text-xs rounded-full font-medium flex items-center gap-1">
+                    <x-icon name="alert-circle" class="w-3 h-3" /> Needs review
                 </span>
                 @endif
             </div>
 
             <button @click="editing = true"
                     class="p-2 text-muted hover:text-primary hover:bg-blue-soft rounded-xl transition-colors flex-shrink-0 ml-2"
-                    title="Edit field">
+                    title="Edit field" aria-label="Edit {{ $var->label }}">
                 <x-icon name="pencil" class="w-4 h-4" />
             </button>
         </div>
@@ -87,6 +174,14 @@
             @if($var->description)
             <p class="text-xs text-muted mt-1">{{ $var->description }}</p>
             @endif
+
+            @if($var->needs_review_reason ?? false)
+            <p class="text-xs text-warning mt-1 flex items-center gap-1">
+                <x-icon name="alert-circle" class="w-3 h-3" />
+                {{ Str::limit($var->needs_review_reason, 100) }}
+            </p>
+            @endif
+
             @if($pages->isNotEmpty())
             <p class="text-xs text-muted mt-1">
                 Page{{ $pages->count() > 1 ? 's' : '' }}: {{ $pages->implode(', ') }}
@@ -94,62 +189,82 @@
             @endif
         </div>
 
-        {{-- Action buttons --}}
-        <div class="flex gap-2">
-            @if($var->approval_status === 'pending')
-                <form method="POST" action="{{ route('templates.variables.approve', [$template->id, $var->id]) }}" class="flex-1">
-                    @csrf
-                    <button type="submit" data-loading-text="Approving…"
-                            class="w-full flex items-center justify-center gap-1.5 bg-success text-white py-2.5 rounded-xl text-sm font-medium hover:bg-green-600 transition-colors">
-                        <x-icon name="check-circle" class="w-4 h-4" /> Approve
-                    </button>
-                </form>
-                <form method="POST" action="{{ route('templates.variables.reject', [$template->id, $var->id]) }}" class="flex-1">
-                    @csrf
-                    <button type="submit" data-loading-text="Rejecting…"
-                            class="w-full flex items-center justify-center gap-1.5 bg-danger/10 text-danger py-2.5 rounded-xl text-sm font-medium hover:bg-danger/20 transition-colors">
-                        <x-icon name="x" class="w-4 h-4" /> Reject
-                    </button>
-                </form>
+        {{-- Action buttons — inline, no form POST, no page reload --}}
+        <div class="flex gap-2" aria-label="Variable actions">
 
-            @elseif($var->approval_status === 'approved')
-                <form method="POST" action="{{ route('templates.variables.undo', [$template->id, $var->id]) }}" class="flex-1">
-                    @csrf
-                    <button type="submit" data-loading-text="Resetting…"
-                            class="w-full flex items-center justify-center gap-1.5 bg-blue-soft text-slate py-2.5 rounded-xl text-sm font-medium hover:bg-blue-light transition-colors">
-                        <x-icon name="arrow-left" class="w-4 h-4" /> Undo
-                    </button>
-                </form>
-                <form method="POST" action="{{ route('templates.variables.reject', [$template->id, $var->id]) }}" class="flex-1">
-                    @csrf
-                    <button type="submit" data-loading-text="Rejecting…"
-                            class="w-full flex items-center justify-center gap-1.5 bg-danger/10 text-danger py-2.5 rounded-xl text-sm font-medium hover:bg-danger/20 transition-colors">
-                        <x-icon name="x" class="w-4 h-4" /> Reject
-                    </button>
-                </form>
+            {{-- Loading overlay shown during any action --}}
+            <template x-if="loading">
+                <div class="flex items-center gap-2 text-xs text-muted py-2.5 px-3 bg-blue-soft rounded-xl flex-1">
+                    <x-spinner size="sm" />
+                    <span x-text="loading === 'approving'
+                        ? 'Adding this field…'
+                        : (loading === 'rejecting'
+                            ? 'Ignoring this suggestion…'
+                            : 'Updating…')"></span>
+                </div>
+            </template>
 
-            @elseif($var->approval_status === 'rejected')
-                <form method="POST" action="{{ route('templates.variables.approve', [$template->id, $var->id]) }}" class="flex-1">
-                    @csrf
-                    <button type="submit" data-loading-text="Approving…"
-                            class="w-full flex items-center justify-center gap-1.5 bg-success text-white py-2.5 rounded-xl text-sm font-medium hover:bg-green-600 transition-colors">
-                        <x-icon name="check-circle" class="w-4 h-4" /> Approve
+            {{-- ── PENDING state actions ──────────────────────────────────── --}}
+            <template x-if="!loading && status === 'pending'">
+                <div class="flex gap-2 flex-1">
+                    <button @click="approve()"
+                            class="flex-1 flex items-center justify-center gap-1.5 bg-success text-white py-2.5 rounded-xl text-sm font-medium hover:bg-green-600 transition-colors"
+                            aria-label="Approve {{ $var->label }}">
+                        <x-icon name="check-circle" class="w-4 h-4" />
+                        Approve
                     </button>
-                </form>
-                <form method="POST" action="{{ route('templates.variables.undo', [$template->id, $var->id]) }}" class="flex-1">
-                    @csrf
-                    <button type="submit" data-loading-text="Resetting…"
-                            class="w-full flex items-center justify-center gap-1.5 bg-blue-soft text-slate py-2.5 rounded-xl text-sm font-medium hover:bg-blue-light transition-colors">
-                        <x-icon name="arrow-left" class="w-4 h-4" /> Undo
+                    <button @click="reject()"
+                            class="flex-1 flex items-center justify-center gap-1.5 bg-danger/10 text-danger py-2.5 rounded-xl text-sm font-medium hover:bg-danger/20 transition-colors"
+                            aria-label="Reject {{ $var->label }}">
+                        <x-icon name="x" class="w-4 h-4" />
+                        Reject
                     </button>
-                </form>
-            @endif
+                </div>
+            </template>
+
+            {{-- ── APPROVED state actions ─────────────────────────────────── --}}
+            <template x-if="!loading && status === 'approved'">
+                <div class="flex gap-2 flex-1">
+                    {{-- Undo --}}
+                    <button @click="undo()"
+                            class="flex-1 flex items-center justify-center gap-1.5 bg-blue-soft text-slate py-2.5 rounded-xl text-sm font-medium hover:bg-blue-light transition-colors"
+                            aria-label="Undo approval of {{ $var->label }}">
+                        <x-icon name="arrow-left" class="w-4 h-4" />
+                        Undo
+                    </button>
+                    <button @click="reject()"
+                            class="flex-1 flex items-center justify-center gap-1.5 bg-danger/10 text-danger py-2.5 rounded-xl text-sm font-medium hover:bg-danger/20 transition-colors"
+                            aria-label="Reject {{ $var->label }}">
+                        <x-icon name="x" class="w-4 h-4" />
+                        Reject
+                    </button>
+                </div>
+            </template>
+
+            {{-- ── REJECTED state actions ─────────────────────────────────── --}}
+            <template x-if="!loading && status === 'rejected'">
+                <div class="flex gap-2 flex-1">
+                    <button @click="approve()"
+                            class="flex-1 flex items-center justify-center gap-1.5 bg-success text-white py-2.5 rounded-xl text-sm font-medium hover:bg-green-600 transition-colors"
+                            aria-label="Approve {{ $var->label }}">
+                        <x-icon name="check-circle" class="w-4 h-4" />
+                        Approve
+                    </button>
+                    <button @click="undo()"
+                            class="flex-1 flex items-center justify-center gap-1.5 bg-blue-soft text-slate py-2.5 rounded-xl text-sm font-medium hover:bg-blue-light transition-colors"
+                            aria-label="Undo rejection of {{ $var->label }}">
+                        <x-icon name="arrow-left" class="w-4 h-4" />
+                        Undo
+                    </button>
+                </div>
+            </template>
+
         </div>
     </div>
 
-    {{-- ── Edit mode ─────────────────────────────────────────────── --}}
+    {{-- ── Edit mode ─────────────────────────────────────────────────── --}}
     <div x-show="editing" x-cloak>
-        {{-- Validation errors --}}
+        {{-- Validation errors scoped to this variable only --}}
         @if($thisCardHasErr)
         <div class="mb-3 p-3 bg-danger/10 border border-danger/20 rounded-xl text-xs text-danger">
             @foreach($errors->all() as $error)
@@ -161,13 +276,14 @@
         <div class="flex items-center justify-between mb-4">
             <h4 class="text-sm font-semibold text-navy">Edit Field</h4>
             <button type="button" @click="editing = false"
-                    class="p-1.5 text-muted hover:text-navy rounded-lg transition-colors">
+                    class="p-1.5 text-muted hover:text-navy rounded-lg transition-colors"
+                    aria-label="Close edit mode">
                 <x-icon name="x" class="w-4 h-4" />
             </button>
         </div>
 
-        {{-- Field metadata form --}}
-        <form method="POST" action="{{ route('templates.variables.update', [$template->id, $var->id]) }}">
+        {{-- Field metadata form — standard POST (editing is a separate action, not AJAX) --}}
+        <form method="POST" action="{{ $updateUrl }}">
             @csrf
             @method('PATCH')
             <div class="space-y-3 mb-4">
@@ -205,7 +321,7 @@
             </div>
         </form>
 
-        {{-- Value mode section (only for approved variables) --}}
+        {{-- Value mode section (approved variables only) --}}
         @if($var->approval_status === 'approved')
         <div class="pt-4 border-t border-line">
             <p class="text-xs font-semibold text-navy mb-2">How should Loopi handle this field?</p>
@@ -233,19 +349,17 @@
                 </button>
             </div>
 
-            {{-- Mode description --}}
             <p x-show="valueMode === 'ask_each_time'" class="text-xs text-muted mb-2">
                 This field appears normally every time. Good for names, dates, amounts.
             </p>
             <p x-show="valueMode === 'default_editable'" class="text-xs text-muted mb-2">
-                The form will be pre-filled with your saved value. The user can still edit it.
+                Pre-filled with your saved value. User can still edit before generating.
             </p>
             <p x-show="valueMode === 'fixed_hidden'" class="text-xs text-muted mb-2">
-                This field is hidden from the form and automatically used in every document.
+                Hidden from the form and automatically used in every document.
             </p>
 
-            {{-- Save value form --}}
-            <form method="POST" action="{{ route('templates.variables.update-mode', [$template->id, $var->id]) }}">
+            <form method="POST" action="{{ $modeUrl }}">
                 @csrf
                 <input type="hidden" name="value_mode" x-bind:value="valueMode">
 
