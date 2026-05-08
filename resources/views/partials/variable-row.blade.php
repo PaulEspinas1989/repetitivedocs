@@ -28,7 +28,8 @@
             <form method="POST" action="{{ route('templates.variables.approve', [$template->id, $var->id]) }}">
                 @csrf
                 <button type="submit"
-                        class="flex items-center gap-1 px-3 py-1.5 bg-success text-white text-xs font-medium rounded-lg hover:bg-green-600 transition-colors">
+                        class="flex items-center gap-1 px-3 py-1.5 bg-success text-white text-xs font-medium rounded-lg hover:bg-green-600 transition-colors"
+                        data-loading-text="Approving…">
                     <x-icon name="check-circle" class="w-3.5 h-3.5" />
                     Approve
                 </button>
@@ -36,7 +37,8 @@
             <form method="POST" action="{{ route('templates.variables.reject', [$template->id, $var->id]) }}">
                 @csrf
                 <button type="submit"
-                        class="flex items-center gap-1 px-3 py-1.5 bg-danger/10 text-danger text-xs font-medium rounded-lg hover:bg-danger/20 transition-colors">
+                        class="flex items-center gap-1 px-3 py-1.5 bg-danger/10 text-danger text-xs font-medium rounded-lg hover:bg-danger/20 transition-colors"
+                        data-loading-text="Rejecting…">
                     <x-icon name="x" class="w-3.5 h-3.5" />
                     Reject
                 </button>

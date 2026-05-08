@@ -68,10 +68,9 @@
         <div class="flex gap-2">
 
             @if($var->approval_status === 'pending')
-                {{-- Pending: Approve + Reject side by side --}}
                 <form method="POST" action="{{ route('templates.variables.approve', [$template->id, $var->id]) }}" class="flex-1">
                     @csrf
-                    <button type="submit"
+                    <button type="submit" data-loading-text="Approving…"
                             class="w-full flex items-center justify-center gap-1.5 bg-success text-white py-2.5 rounded-xl text-sm font-medium hover:bg-green-600 transition-colors">
                         <x-icon name="check-circle" class="w-4 h-4" />
                         Approve
@@ -79,7 +78,7 @@
                 </form>
                 <form method="POST" action="{{ route('templates.variables.reject', [$template->id, $var->id]) }}" class="flex-1">
                     @csrf
-                    <button type="submit"
+                    <button type="submit" data-loading-text="Rejecting…"
                             class="w-full flex items-center justify-center gap-1.5 bg-danger/10 text-danger py-2.5 rounded-xl text-sm font-medium hover:bg-danger/20 transition-colors">
                         <x-icon name="x" class="w-4 h-4" />
                         Reject
@@ -87,10 +86,9 @@
                 </form>
 
             @elseif($var->approval_status === 'approved')
-                {{-- Approved: Undo (back to pending) + Reject --}}
                 <form method="POST" action="{{ route('templates.variables.undo', [$template->id, $var->id]) }}" class="flex-1">
                     @csrf
-                    <button type="submit"
+                    <button type="submit" data-loading-text="Resetting…"
                             class="w-full flex items-center justify-center gap-1.5 bg-blue-soft text-slate py-2.5 rounded-xl text-sm font-medium hover:bg-blue-light transition-colors">
                         <x-icon name="arrow-left" class="w-4 h-4" />
                         Undo
@@ -98,7 +96,7 @@
                 </form>
                 <form method="POST" action="{{ route('templates.variables.reject', [$template->id, $var->id]) }}" class="flex-1">
                     @csrf
-                    <button type="submit"
+                    <button type="submit" data-loading-text="Rejecting…"
                             class="w-full flex items-center justify-center gap-1.5 bg-danger/10 text-danger py-2.5 rounded-xl text-sm font-medium hover:bg-danger/20 transition-colors">
                         <x-icon name="x" class="w-4 h-4" />
                         Reject
@@ -106,10 +104,9 @@
                 </form>
 
             @elseif($var->approval_status === 'rejected')
-                {{-- Rejected: Approve + Undo (back to pending) --}}
                 <form method="POST" action="{{ route('templates.variables.approve', [$template->id, $var->id]) }}" class="flex-1">
                     @csrf
-                    <button type="submit"
+                    <button type="submit" data-loading-text="Approving…"
                             class="w-full flex items-center justify-center gap-1.5 bg-success text-white py-2.5 rounded-xl text-sm font-medium hover:bg-green-600 transition-colors">
                         <x-icon name="check-circle" class="w-4 h-4" />
                         Approve
@@ -117,7 +114,7 @@
                 </form>
                 <form method="POST" action="{{ route('templates.variables.undo', [$template->id, $var->id]) }}" class="flex-1">
                     @csrf
-                    <button type="submit"
+                    <button type="submit" data-loading-text="Resetting…"
                             class="w-full flex items-center justify-center gap-1.5 bg-blue-soft text-slate py-2.5 rounded-xl text-sm font-medium hover:bg-blue-light transition-colors">
                         <x-icon name="arrow-left" class="w-4 h-4" />
                         Undo
@@ -172,7 +169,8 @@
             </div>
             <div class="flex gap-2">
                 <button type="submit"
-                        class="flex-1 flex items-center justify-center gap-1.5 bg-primary text-white py-2 rounded-xl text-sm font-medium hover:bg-primary-dark transition-colors">
+                        class="flex-1 flex items-center justify-center gap-1.5 bg-primary text-white py-2 rounded-xl text-sm font-medium hover:bg-primary-dark transition-colors"
+                        data-loading-text="Saving…">
                     <x-icon name="check-circle" class="w-4 h-4" />
                     Save changes
                 </button>

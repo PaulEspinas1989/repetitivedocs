@@ -84,7 +84,8 @@
                     <label for="remember" class="text-sm text-slate">Remember me</label>
                 </div>
 
-                <button type="submit" class="w-full flex items-center justify-center gap-2 bg-primary text-white py-3 rounded-xl font-semibold text-sm hover:bg-primary-dark transition-colors duration-200">
+                <button type="submit" class="w-full flex items-center justify-center gap-2 bg-primary text-white py-3 rounded-xl font-semibold text-sm hover:bg-primary-dark transition-colors duration-200"
+                        data-loading-text="Signing in…">
                     Sign In
                 </button>
             </form>

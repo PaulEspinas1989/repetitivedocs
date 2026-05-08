@@ -144,10 +144,14 @@
 
                 <div class="mt-8 pt-6 border-t border-line">
                     <button type="submit"
-                            class="w-full flex items-center justify-center gap-2 bg-primary text-white py-4 rounded-xl font-semibold hover:bg-primary-dark transition-colors text-sm">
+                            class="w-full flex items-center justify-center gap-2 bg-primary text-white py-4 rounded-xl font-semibold hover:bg-primary-dark transition-colors text-sm"
+                            data-loading-text="Loopi is building your document…">
                         <x-icon name="sparkles" class="w-5 h-5" />
                         Generate Document
                     </button>
+                    <p class="text-xs text-muted text-center mt-3">
+                        No copy-paste. Loopi does the repetitive part.
+                    </p>
                 </div>
             </div>
 

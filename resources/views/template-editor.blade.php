@@ -72,7 +72,8 @@
                     <p class="text-xs text-muted">{{ $pending->count() }} fields waiting for review</p>
                     <form method="POST" action="{{ route('templates.editor.approve-all', $template->id) }}">
                         @csrf
-                        <button type="submit" class="text-xs text-primary hover:underline font-medium">
+                        <button type="submit" class="text-xs text-primary hover:underline font-medium"
+                                data-loading-text="Approving all…">
                             Accept all pending →
                         </button>
                     </form>

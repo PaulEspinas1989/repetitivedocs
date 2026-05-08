@@ -151,7 +151,7 @@
                                 Settings
                             </a>
                             @endif
-                            <form method="POST" action="{{ route('logout') }}">
+                            <form method="POST" action="{{ route('logout') }}" data-no-loading>
                                 @csrf
                                 <button type="submit" class="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-danger hover:bg-red-50 transition-colors">
                                     <x-icon name="log-out" class="w-4 h-4" />
@@ -205,6 +205,15 @@
             @endif
         @endforeach
     </nav>
+</div>
+
+{{-- ── Global loading bar ─────────────────────────────────── --}}
+<div id="rd-loading-bar" class="fixed top-0 left-0 right-0 h-0.5 z-[9999] opacity-0 pointer-events-none">
+    <div class="rd-bar-fill h-full w-full bg-primary"></div>
+</div>
+
+{{-- ── Global toast container ─────────────────────────────── --}}
+<div id="rd-toast-container" class="fixed bottom-6 right-6 z-[9998] flex flex-col gap-2 pointer-events-none" aria-live="polite" aria-atomic="false">
 </div>
 
 </body>

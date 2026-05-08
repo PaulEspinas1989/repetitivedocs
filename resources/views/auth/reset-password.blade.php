@@ -59,7 +59,8 @@
                     </div>
                 </div>
 
-                <button type="submit" class="w-full flex items-center justify-center gap-2 bg-primary text-white py-3 rounded-xl font-semibold text-sm hover:bg-primary-dark transition-colors">
+                <button type="submit" class="w-full flex items-center justify-center gap-2 bg-primary text-white py-3 rounded-xl font-semibold text-sm hover:bg-primary-dark transition-colors"
+                        data-loading-text="Updating your password…">
                     Reset Password
                 </button>
             </form>
