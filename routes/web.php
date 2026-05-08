@@ -66,6 +66,27 @@ Route::middleware(['auth', 'workspace'])->group(function () {
         return redirect()->route('templates.editor', $template->id);
     })->name('templates.approve-all');
 
+    // ── Group approve/reject (repeating or standalone) ────────
+    Route::post('/templates/{template}/group-action', function (Template $template) {
+        $workspaceIds = auth()->user()->workspaces()->pluck('workspaces.id')->toArray();
+        if (!in_array($template->workspace_id, $workspaceIds)) {
+            abort(403);
+        }
+        $group  = request('group');  // 'repeating' or 'standalone'
+        $action = request('action'); // 'approve' or 'reject'
+        $status = $action === 'approve' ? 'approved' : 'rejected';
+
+        $query = $template->variables();
+        if ($group === 'repeating') {
+            $query->where('occurrences', '>', 1);
+        } elseif ($group === 'standalone') {
+            $query->where('occurrences', 1);
+        }
+        $query->update(['approval_status' => $status]);
+
+        return back();
+    })->name('templates.group-action');
+
     // ── Template variable review ──────────────────────────────
     Route::get('/templates/{template}/variables', function (Template $template) {
         $template->load('variables');

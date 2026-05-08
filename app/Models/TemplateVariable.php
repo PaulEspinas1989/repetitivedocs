@@ -11,7 +11,7 @@ class TemplateVariable extends Model
         'template_id', 'workspace_id', 'name', 'label', 'type',
         'description', 'example_value', 'default_value', 'options',
         'is_required', 'sort_order', 'approval_status', 'ai_suggested',
-        'text_positions',
+        'text_positions', 'occurrences',
     ];
 
     protected $casts = [
@@ -20,7 +20,13 @@ class TemplateVariable extends Model
         'ai_suggested'   => 'boolean',
         'sort_order'     => 'integer',
         'text_positions' => 'array',
+        'occurrences'    => 'integer',
     ];
+
+    public function isRepeating(): bool
+    {
+        return ($this->occurrences ?? 1) > 1;
+    }
 
     public function template(): BelongsTo
     {

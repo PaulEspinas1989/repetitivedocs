@@ -49,26 +49,39 @@ class VariableDetectionService
                 );
             }
 
+            // Use extracted text to count how many times each value appears
+            $docText = $variables['document_text'] ?? '';
+
             foreach ($variableList as $v) {
-                $exampleValue   = $v['example_value'] ?? null;
-                $textPositions  = null;
+                $exampleValue  = $v['example_value'] ?? null;
+                $textPositions = null;
+                $occurrences   = 1;
+
                 if ($doc->isPdf() && !empty($exampleValue) && !empty($pdfTextElements)) {
                     $textPositions = $this->findTextPositions($pdfTextElements, $exampleValue);
                 }
 
+                if (!empty($exampleValue) && !empty($docText)) {
+                    $occurrences = max(1, substr_count(
+                        mb_strtolower($docText),
+                        mb_strtolower($exampleValue)
+                    ));
+                }
+
                 TemplateVariable::create([
-                    'template_id'    => $template->id,
-                    'workspace_id'   => $doc->workspace_id,
-                    'name'           => Str::snake($v['name'] ?? Str::random(8)),
-                    'label'          => $v['label'] ?? $v['name'] ?? 'Unknown',
-                    'type'           => $v['type'] ?? 'text',
-                    'description'    => $v['description'] ?? null,
-                    'example_value'  => $exampleValue,
-                    'is_required'    => $v['is_required'] ?? true,
-                    'sort_order'     => $v['sort_order'] ?? 0,
+                    'template_id'     => $template->id,
+                    'workspace_id'    => $doc->workspace_id,
+                    'name'            => Str::snake($v['name'] ?? Str::random(8)),
+                    'label'           => $v['label'] ?? $v['name'] ?? 'Unknown',
+                    'type'            => $v['type'] ?? 'text',
+                    'description'     => $v['description'] ?? null,
+                    'example_value'   => $exampleValue,
+                    'is_required'     => $v['is_required'] ?? true,
+                    'sort_order'      => $v['sort_order'] ?? 0,
                     'approval_status' => 'pending',
-                    'ai_suggested'   => true,
-                    'text_positions' => $textPositions,
+                    'ai_suggested'    => true,
+                    'text_positions'  => $textPositions,
+                    'occurrences'     => $occurrences,
                 ]);
             }
 
