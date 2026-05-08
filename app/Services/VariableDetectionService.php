@@ -334,7 +334,7 @@ class VariableDetectionService
                 ],
             ],
             model:       $this->ai->smartModel(),
-            maxTokens:   6000,
+            maxTokens:   4096,
             betaHeaders: ['pdfs-2024-09-25'],
         );
 
@@ -596,7 +596,7 @@ class VariableDetectionService
                 ],
             ],
             model:     $this->ai->fastModel(),
-            maxTokens: 6000,
+            maxTokens: 4096,
         );
 
         return $this->parseResponse($response);
@@ -709,89 +709,57 @@ class VariableDetectionService
             : "  \"document_text\": \"The complete plain text of the document, preserving paragraph breaks. Keep all original text exactly as written.\",\n";
 
         return <<<PROMPT
-You are an AI document analyzer for RepetitiveDocs, a document personalization platform.
-
-The document is called "{$templateName}". Your job is to find EVERY piece of information a user would need to change when reusing this document for a different person, organization, date, or transaction.
+You are an AI document analyzer for RepetitiveDocs. Find every value a user must change when reusing "{$templateName}" for a different person, date, or transaction.
 {$docTextInstruction}
-HARD RULES:
-1. Do NOT omit variables just because they are not in brackets or obvious.
-2. Do NOT miss variables in headers, footers, tables, or signature blocks.
-3. Do NOT skip names under signature lines or above official titles.
-4. When the same real-world value appears multiple times, create ONE variable with multiple occurrences.
-5. Return uncertain candidates in "needs_review_candidates" — do NOT silently drop them.
+Rules: (1) Never omit values just because they aren't in brackets. (2) Check headers, footers, tables, and signature blocks. (3) When the same real-world value appears multiple times, create ONE variable with multiple occurrences — not separate variables. (4) Return uncertain items in needs_review_candidates, never drop them silently.
 
-Return ONLY a valid JSON object with this exact structure (no markdown, no explanation):
+Return ONLY valid JSON (no markdown):
 {
 {$docTextField}  "variables": [
     {
-      "name": "snake_case_name",
-      "label": "Human Readable Label (2-4 words)",
+      "name": "snake_case_key",
+      "label": "2-4 word label",
       "type": "text|date|number|currency|email|phone|address|select",
-      "description": "What this field represents",
-      "example_value": "The clean canonical value WITHOUT honorific prefix (e.g. 'Juan Dela Cruz' NOT 'HON. JUAN DELA CRUZ')",
+      "description": "brief description",
+      "example_value": "clean value, NO honorific prefix",
       "is_required": true,
       "sort_order": 1,
       "semantic_type": "person_name|org_name|date|currency|reference_number|address|phone|email|text",
       "entity_role": "mayor_signatory|recipient|company|employee|date_signed|amount|reference|location|other",
       "confidence_score": 0.95,
-      "grouping_reason": "Why multiple placements were grouped as one variable",
+      "grouping_reason": "why occurrences are grouped",
       "occurrences": [
         {
-          "original_text": "EXACT text as it appears (e.g. 'HON. JUAN DELA CRUZ')",
-          "normalized_value": "Clean version without honorifics (e.g. 'Juan Dela Cruz')",
+          "original_text": "exact text as it appears",
+          "normalized_value": "clean version without honorifics",
           "prefix_text": "HON.",
           "suffix_text": "",
           "casing_pattern": "uppercase|titlecase|lowercase|mixed",
           "page_number": 1,
           "source_area": "body|header|footer|table|signature_block|labeled_field",
-          "nearby_label": "Text of nearest label (e.g. 'Approved by', 'Municipal Mayor')",
-          "context_before": "Short text directly before this value",
-          "context_after": "Short text directly after (e.g. 'Municipal Mayor')",
-          "semantic_context": "signature_block|labeled_field|header|footer|body|approval_block|table_cell",
+          "nearby_label": "nearest label text",
+          "context_before": "text before",
+          "context_after": "text after",
+          "semantic_context": "signature_block|labeled_field|header|footer|body|approval_block",
           "recommended_replacement_strategy": "replace_value_preserve_prefix|replace_exact_text_preserve_style|replace_signature_block_name"
         }
       ]
     }
   ],
   "needs_review_candidates": [
-    {
-      "original_text": "Text found but uncertain if editable",
-      "suggested_display_name": "Suggested field name",
-      "reason": "Why this might be editable",
-      "suggested_semantic_type": "person_name|text|org_name|etc",
-      "confidence": "medium|low"
-    }
+    {"original_text": "uncertain text", "suggested_display_name": "Field Name", "reason": "why uncertain", "confidence": "medium|low"}
   ],
-  "summary": {
-    "total": 10,
-    "categories": { "people": 3, "dates": 2, "amounts": 2, "locations": 1, "contacts": 1, "organizations": 1 }
-  }
+  "summary": {"total": 0, "categories": {"people": 0, "dates": 0, "amounts": 0, "locations": 0, "contacts": 0, "organizations": 0}}
 }
 
-WHAT TO DETECT — include ALL of these when present:
-- Person names: recipient, applicant, client, employee, official names
-- Mayor / City Mayor / Municipal Mayor / Governor / Vice Mayor / Barangay Captain names
-- ALL CAPS official names in signature/approval blocks
-- Names above titles: "HON. JUAN DELA CRUZ" above "Municipal Mayor"
-- Names after "Approved by:", "Certified by:", "Signed by:", "Noted by:", "Prepared by:"
-- Names preceded by "Hon." or "Honorable"
-- Positions and titles that change: "Municipal Mayor", "Department Head", "OIC"
-- Organization names: LGU names, company names, municipality, city, province, barangay
-- Dates: document date, validity date, signing date, transaction date (any format)
-- Amounts: monetary values, fees, totals, balances
-- Reference numbers: control number, certificate number, invoice number, case number
-- Addresses: physical addresses, office locations
-- Table cell values that change: quantities, prices, descriptions in table rows
-- Header/footer values: page header organization name, footer reference
-- Label-value pairs: "Name: [value]", "Date: [value]", "Position: [value]"
-- Repeated values: if same text appears 3+ times, it likely changes per document
-- Signatories and their titles even if text seems "standard" — they change when staff changes
+DETECT ALL OF: person names, mayor/signatory names, ALL CAPS names in signature blocks, names above titles like "Municipal Mayor", names after "Approved by" / "Certified by" / "Signed by" / "Noted by", positions/titles, organization/LGU/municipality names, dates, amounts, reference numbers, addresses, table cell values, header/footer values, label-value pairs ("Name:", "Date:"), repeated text.
 
-GROUPING RULES:
-- "Juan Dela Cruz", "HON. JUAN DELA CRUZ", "Mayor Juan Dela Cruz" → ONE variable (Mayor Name)
-- "Municipality of Milagros", "Milagros, Masbate", "MILAGROS" → likely ONE variable (Municipality Name)
-- Same date in different formats → ONE variable
-- Group by REAL-WORLD IDENTITY, not by exact text
+GROUPING: "Juan Dela Cruz" + "HON. JUAN DELA CRUZ" + "Mayor Juan Dela Cruz" = ONE variable. Group by real-world identity.
+
+SIGNATORIES: example_value = clean name only. prefix_text = "HON." or "Mayor". casing_pattern = "uppercase" if ALL CAPS. source_area = "signature_block". entity_role = "mayor_signatory".
+
+Use snake_case names. sort_order = reading order. Return ONLY the JSON.
+PROMPT;
 
 SIGNATORY/MAYOR DETECTION — MANDATORY:
 For any name in a signature/approval block:
