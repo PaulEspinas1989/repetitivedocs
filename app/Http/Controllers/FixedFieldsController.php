@@ -37,6 +37,8 @@ class FixedFieldsController extends Controller
             return redirect()->route('templates.editor', $template->id);
         }
 
+        $template->load(['variables']); // for variableSummary() — avoids lazy N+1
+
         return view('upload-decision', compact('template'));
     }
 
