@@ -42,10 +42,16 @@ class DocumentAnalysisController extends Controller
             ], 500);
         }
 
+        // Route to upload-decision so user explicitly chooses
+        // "Generate Once" vs "Save as Template" before seeing the editor.
+        $redirect = $template->save_mode === \App\Models\Template::SAVE_DRAFT
+            ? route('upload-decision', $template->id)
+            : route('automation-map', $template->id);
+
         return response()->json([
             'success'     => true,
             'template_id' => $template->id,
-            'redirect'    => route('automation-map', $template->id),
+            'redirect'    => $redirect,
         ]);
     }
 }

@@ -10,7 +10,10 @@ class DashboardController extends Controller
 {
     public function index(): View
     {
+        // Only show templates the user explicitly saved — exclude drafts (still being analyzed)
+        // and one-time generations (intentionally not saved).
         $templates = Template::where('workspace_id', auth()->user()->active_workspace_id)
+            ->where('save_mode', Template::SAVE_TEMPLATE)
             ->withCount('approvedVariables')
             ->latest()
             ->get();
