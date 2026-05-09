@@ -42,6 +42,9 @@ class AnalyzeDocumentJob implements ShouldQueue
                     'cached_doc_id'   => $existing->id,
                     'cached_template' => $existing->template->id,
                 ]);
+                // Point the new document at the cached template so the status
+                // endpoint can find it via $document->template()->first().
+                $existing->template->update(['uploaded_document_id' => $this->doc->id]);
                 $this->doc->update(['status' => 'processed']);
                 return;
             }
