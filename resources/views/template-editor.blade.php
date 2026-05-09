@@ -19,11 +19,14 @@
              counts.rejected     = e.counts.rejected;
          }
          if (e.readiness !== undefined) readiness = e.readiness;
-         // Surface a brief non-intrusive toast via the global system
          if (typeof window.rdToast === 'function') {
              window.rdToast(e.label
                  ? '&quot;' + e.label + '&quot; ' + (e.to === 'approved' ? 'approved.' : e.to === 'rejected' ? 'rejected.' : 'updated.')
                  : 'Field updated.', 'success');
+         }
+         // Auto-advance: when all pending + needs_review are gone, move to Approved tab
+         if (e.counts && e.counts.pending === 0 && e.counts.needs_review === 0 && e.counts.approved > 0) {
+             activeTab = 'approved';
          }
      "
 >
@@ -167,7 +170,7 @@
                     </div>
                     <div class="space-y-3">
                         @foreach($needs_review as $var)
-                        @include('partials.variable-card', ['var' => $var, 'template' => $template])
+                        @include('partials.variable-card', ['var' => $var, 'template' => $template, 'showWhen' => 'pending'])
                         @endforeach
                     </div>
                     @endif
@@ -175,6 +178,23 @@
 
                 {{-- Pending tab — groupedVars pre-computed in controller, no re-filtering here --}}
                 <div x-show="activeTab === 'pending'">
+                    {{-- Contextual tip (dismissable) --}}
+                    @if($pending->isNotEmpty())
+                    <div x-data="{ shown: !localStorage.getItem('rd_approve_tip_dismissed') }"
+                         x-show="shown" x-cloak
+                         class="mb-4 flex items-start gap-3 p-4 bg-primary/5 border border-primary/20 rounded-2xl">
+                        <img src="{{ asset('images/loopi-welcome.png') }}" alt="Loopi" class="w-10 h-10 object-contain flex-shrink-0">
+                        <div class="flex-1 min-w-0">
+                            <p class="text-sm font-semibold text-navy">Approve only the fields you want to personalise</p>
+                            <p class="text-xs text-slate mt-0.5">Things like names, dates, and amounts — yes. Static text, logos, or legal boilerplate — reject those. Loopi will create a form from everything you approve.</p>
+                        </div>
+                        <button type="button" @click="shown = false; localStorage.setItem('rd_approve_tip_dismissed', '1')"
+                                class="text-muted hover:text-navy flex-shrink-0 transition-colors" aria-label="Dismiss tip">
+                            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                        </button>
+                    </div>
+                    @endif
+
                     @php
                         $pendingRepeating  = $groupedVars['pending']['repeating'];
                         $pendingStandalone = $groupedVars['pending']['standalone'];
@@ -215,7 +235,7 @@
                             </p>
                             <div class="space-y-3">
                                 @foreach($pendingRepeating as $var)
-                                @include('partials.variable-card', ['var' => $var, 'template' => $template])
+                                @include('partials.variable-card', ['var' => $var, 'template' => $template, 'showWhen' => 'pending'])
                                 @endforeach
                             </div>
                         </div>
@@ -228,7 +248,7 @@
                             </p>
                             <div class="space-y-3">
                                 @foreach($pendingStandalone as $var)
-                                @include('partials.variable-card', ['var' => $var, 'template' => $template])
+                                @include('partials.variable-card', ['var' => $var, 'template' => $template, 'showWhen' => 'pending'])
                                 @endforeach
                             </div>
                         </div>
@@ -238,6 +258,19 @@
 
                 {{-- Approved tab --}}
                 <div x-show="activeTab === 'approved'">
+                    {{-- Ready-to-generate banner: shown reactively when all pending gone --}}
+                    <div x-show="counts.pending === 0 && counts.needs_review === 0 && counts.approved > 0" x-cloak
+                         class="mb-4 p-4 bg-success/10 border border-success/20 rounded-2xl flex items-center justify-between gap-4">
+                        <div>
+                            <p class="text-sm font-semibold text-navy">All fields reviewed — you're ready!</p>
+                            <p class="text-xs text-slate mt-0.5" x-text="counts.approved + ' fields approved and ready to personalise.'"></p>
+                        </div>
+                        <a href="{{ route('fillable-form', $template->id) }}"
+                           class="flex-shrink-0 flex items-center gap-1.5 bg-success text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-green-600 transition-colors">
+                            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                            Generate Now
+                        </a>
+                    </div>
                     @php
                         $approvedRepeating  = $groupedVars['approved']['repeating'];
                         $approvedStandalone = $groupedVars['approved']['standalone'];
@@ -253,7 +286,7 @@
                             </p>
                             <div class="space-y-3">
                                 @foreach($approvedRepeating as $var)
-                                @include('partials.variable-card', ['var' => $var, 'template' => $template])
+                                @include('partials.variable-card', ['var' => $var, 'template' => $template, 'showWhen' => 'approved'])
                                 @endforeach
                             </div>
                         </div>
@@ -266,7 +299,7 @@
                             </p>
                             <div class="space-y-3">
                                 @foreach($approvedStandalone as $var)
-                                @include('partials.variable-card', ['var' => $var, 'template' => $template])
+                                @include('partials.variable-card', ['var' => $var, 'template' => $template, 'showWhen' => 'approved'])
                                 @endforeach
                             </div>
                         </div>
@@ -291,7 +324,7 @@
                             </p>
                             <div class="space-y-3">
                                 @foreach($rejectedRepeating as $var)
-                                @include('partials.variable-card', ['var' => $var, 'template' => $template])
+                                @include('partials.variable-card', ['var' => $var, 'template' => $template, 'showWhen' => 'rejected'])
                                 @endforeach
                             </div>
                         </div>
@@ -304,7 +337,7 @@
                             </p>
                             <div class="space-y-3">
                                 @foreach($rejectedStandalone as $var)
-                                @include('partials.variable-card', ['var' => $var, 'template' => $template])
+                                @include('partials.variable-card', ['var' => $var, 'template' => $template, 'showWhen' => 'rejected'])
                                 @endforeach
                             </div>
                         </div>

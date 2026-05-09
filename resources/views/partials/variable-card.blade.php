@@ -40,6 +40,7 @@
          'border-danger/30 bg-danger/5':   status === 'rejected',
          'border-line bg-white':           status === 'pending',
      }"
+     @if(isset($showWhen)) x-show="status === {{ @json($showWhen) }}" @endif
      x-data='{
          status:    @json($var->approval_status),
          loading:   null,
@@ -70,6 +71,7 @@
                  if (!res.ok || !data.success) throw new Error(data.message ?? "Request failed");
                  this.status = data.status;
                  this.$dispatch("rd-status-change", {
+                     variable_id: {{ $var->id }},
                      from:      action === "undo" ? (this.status === "pending" ? data.status : "pending") : this.status,
                      to:        data.status,
                      counts:    data.counts,
