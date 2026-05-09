@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\AnalyzeDocumentJob;
 use App\Models\UploadedDocument;
 use App\Services\PdfToDocxService;
 use Illuminate\Http\RedirectResponse;
@@ -71,6 +72,10 @@ class UploadController extends Controller
             'document_type' => $request->document_type,
             'status'        => 'pending',
         ]);
+
+        // Dispatch async — workers pick this up immediately.
+        // The ai-loading page polls /documents/{doc}/analyze for status.
+        AnalyzeDocumentJob::dispatch($doc);
 
         return redirect()->route('ai-loading', $doc->id);
     }

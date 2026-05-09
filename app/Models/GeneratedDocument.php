@@ -11,7 +11,7 @@ class GeneratedDocument extends Model
 {
     protected $fillable = [
         'workspace_id', 'user_id', 'template_id',
-        'variable_values', 'file_path', 'file_name', 'disk', 'status',
+        'variable_values', 'file_path', 'file_name', 'disk', 'status', 'error_message',
     ];
 
     protected $casts = [

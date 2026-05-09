@@ -74,18 +74,77 @@ class DocumentGenerationService
         return $generated;
     }
 
+    /**
+     * Generate a file from pre-resolved values, returning [file_path, file_name, disk].
+     * Used by GenerateDocumentJob which owns the GeneratedDocument record.
+     */
+    public function generateFile(Template $template, array $resolvedValues): array
+    {
+        $template->load(['uploadedDocument']);
+        $doc = $template->uploadedDocument;
+
+        if ($doc && $doc->isPdf()) {
+            $hasAnyPosition = false;
+            foreach ($template->approvedVariables as $var) {
+                if (!empty($var->resolveOverlayPositions())) {
+                    $hasAnyPosition = true;
+                    break;
+                }
+            }
+            if (!$hasAnyPosition && $template->approvedVariables->isNotEmpty()) {
+                throw new \RuntimeException(
+                    'NEEDS_REANALYSIS: This PDF template needs to be re-analyzed before generating. ' .
+                    'Delete it and re-upload the PDF to get precise field positions.'
+                );
+            }
+        }
+
+        if ($doc && $doc->isDocx()) {
+            return $this->buildDocxFile($template, $doc, $resolvedValues);
+        } elseif ($doc && $doc->isPdf()) {
+            // PDF overlay creates a DB record internally; job will delete the orphan.
+            $generated = $this->generateFromPdfOverlay($template, $doc, $resolvedValues);
+            return [
+                'file_path'     => $generated->file_path,
+                'file_name'     => $generated->file_name,
+                'disk'          => $generated->disk,
+                '_orphan_id'    => $generated->id,
+            ];
+        } else {
+            return $this->buildHtmlFile($template, $resolvedValues);
+        }
+    }
+
     // ── DOCX generation via TemplateProcessor (preserves all formatting) ──
 
     private function generateFromDocx(Template $template, $doc, array $values): GeneratedDocument
     {
-        // Use the pre-built template DOCX with ${var_name} placeholders if available
+        $file = $this->buildDocxFile($template, $doc, $values);
+        return GeneratedDocument::create([
+            'workspace_id'    => $template->workspace_id,
+            'user_id'         => auth()->id(),
+            'template_id'     => $template->id,
+            'variable_values' => $values,
+            'file_path'       => $file['file_path'],
+            'file_name'       => $file['file_name'],
+            'disk'            => 'documents',
+            'status'          => 'ready',
+        ]);
+    }
+
+    private function generateFileFromDocx(Template $template, $doc, array $values): array
+    {
+        return $this->buildDocxFile($template, $doc, $values);
+    }
+
+    private function buildDocxFile(Template $template, $doc, array $values): array
+    {
         $templatePath = $template->template_docx_path
             ? Storage::disk('documents')->path($template->template_docx_path)
             : null;
 
         if (!$templatePath || !file_exists($templatePath)) {
-            // Fallback: raw XML replacement on the original file
-            return $this->generateFromDocxRaw($template, $doc, $values);
+            return $this->buildDocxFileRaw($template, $doc, $values);
         }
 
         $processor = new \PhpOffice\PhpWord\TemplateProcessor($templatePath);
@@ -107,19 +166,25 @@ class DocumentGenerationService
         $path     = 'workspaces/' . $template->workspace_id . '/generated/' . $fileName;
         Storage::disk('documents')->put($path, $docxBytes);
 
+        return ['file_path' => $path, 'file_name' => $fileName, 'disk' => 'documents'];
+    }
+
+    private function generateFromDocxRaw(Template $template, $doc, array $values): GeneratedDocument
+    {
+        $file = $this->buildDocxFileRaw($template, $doc, $values);
         return GeneratedDocument::create([
             'workspace_id'    => $template->workspace_id,
             'user_id'         => auth()->id(),
             'template_id'     => $template->id,
             'variable_values' => $values,
-            'file_path'       => $path,
-            'file_name'       => $fileName,
+            'file_path'       => $file['file_path'],
+            'file_name'       => $file['file_name'],
             'disk'            => 'documents',
             'status'          => 'ready',
         ]);
     }
 
-    private function generateFromDocxRaw(Template $template, $doc, array $values): GeneratedDocument
+    private function buildDocxFileRaw(Template $template, $doc, array $values): array
     {
         $sourcePath = Storage::disk($doc->disk)->path($doc->path);
         $tmpFile    = tempnam(sys_get_temp_dir(), 'rdoc_') . '.docx';
@@ -156,16 +221,7 @@ class DocumentGenerationService
         $path     = 'workspaces/' . $template->workspace_id . '/generated/' . $fileName;
         Storage::disk('documents')->put($path, $docxBytes);
 
-        return GeneratedDocument::create([
-            'workspace_id'    => $template->workspace_id,
-            'user_id'         => auth()->id(),
-            'template_id'     => $template->id,
-            'variable_values' => $values,
-            'file_path'       => $path,
-            'file_name'       => $fileName,
-            'disk'            => 'documents',
-            'status'          => 'ready',
-        ]);
+        return ['file_path' => $path, 'file_name' => $fileName, 'disk' => 'documents'];
     }
 
     // ── PDF overlay generation (preserves original PDF formatting) ───
@@ -319,6 +375,8 @@ class DocumentGenerationService
             $path     = 'workspaces/' . $template->workspace_id . '/generated/' . $fileName;
             Storage::disk('documents')->put($path, $pdfBytes);
 
+            $fileInfo = ['file_path' => $path, 'file_name' => $fileName, 'disk' => 'documents'];
+
             return GeneratedDocument::create([
                 'workspace_id'    => $template->workspace_id,
                 'user_id'         => auth()->id(),
@@ -337,9 +395,42 @@ class DocumentGenerationService
         }
     }
 
+    private function generateFileFromPdfOverlay(Template $template, $doc, array $values): array
+    {
+        // generateFromPdfOverlay already stores the file; we capture the path via a workaround.
+        // For the job path we run the same logic but return the file info array.
+        $generated = $this->generateFromPdfOverlay($template, $doc, $values);
+        return [
+            'file_path' => $generated->file_path,
+            'file_name' => $generated->file_name,
+            'disk'      => $generated->disk,
+            '_generated_id' => $generated->id, // job will delete this orphan record
+        ];
+    }
+
     // ── HTML/PDF generation (PDF uploads or fallback) ─────────────────
 
     private function generateFromHtml(Template $template, array $values): GeneratedDocument
+    {
+        $file = $this->buildHtmlFile($template, $values);
+        return GeneratedDocument::create([
+            'workspace_id'    => $template->workspace_id,
+            'user_id'         => auth()->id(),
+            'template_id'     => $template->id,
+            'variable_values' => $values,
+            'file_path'       => $file['file_path'],
+            'file_name'       => $file['file_name'],
+            'disk'            => 'documents',
+            'status'          => 'ready',
+        ]);
+    }
+
+    private function generateFileFromHtml(Template $template, array $values): array
+    {
+        return $this->buildHtmlFile($template, $values);
+    }
+
+    private function buildHtmlFile(Template $template, array $values): array
     {
         $docText    = $this->extractSourceText($template);
         $filledText = $this->replaceValues($docText, $template, $values);
@@ -352,16 +443,7 @@ class DocumentGenerationService
         $path     = 'workspaces/' . $template->workspace_id . '/generated/' . $fileName;
         Storage::disk('documents')->put($path, $pdfBytes);
 
-        return GeneratedDocument::create([
-            'workspace_id'    => $template->workspace_id,
-            'user_id'         => auth()->id(),
-            'template_id'     => $template->id,
-            'variable_values' => $values,
-            'file_path'       => $path,
-            'file_name'       => $fileName,
-            'disk'            => 'documents',
-            'status'          => 'ready',
-        ]);
+        return ['file_path' => $path, 'file_name' => $fileName, 'disk' => 'documents'];
     }
 
     // ── Private helpers ──────────────────────────────────────────────

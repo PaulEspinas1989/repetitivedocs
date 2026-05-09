@@ -155,6 +155,17 @@ Route::middleware(['auth', 'workspace'])->group(function () {
     Route::get('/templates/{template}/form',  [FillableFormController::class, 'show'])->name('fillable-form');
     Route::post('/templates/{template}/form', [FillableFormController::class, 'generate'])->name('fillable-form.generate');
 
+    // ── Generation loading + status polling ───────────────────
+    Route::get('/generated/{generated}/loading', function (GeneratedDocument $generated) {
+        if ((int) $generated->workspace_id !== (int) auth()->user()->active_workspace_id) {
+            abort(403);
+        }
+        return view('generation-loading', compact('generated'));
+    })->name('generation-loading');
+
+    Route::get('/generated/{generated}/status', [FillableFormController::class, 'status'])
+         ->name('generated-documents.status');
+
     // ── Generation result ─────────────────────────────────────
     Route::get('/generated/{generated}', function (GeneratedDocument $generated) {
         if ((int) $generated->workspace_id !== (int) auth()->user()->active_workspace_id) {

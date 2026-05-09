@@ -2,12 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\GenerateDocumentJob;
 use App\Models\GeneratedDocument;
 use App\Models\Template;
 use App\Models\TemplateVariable;
 use App\Services\DateFormatterService;
-use App\Services\DocumentGenerationService;
-use App\Services\GenerationValueResolverService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -17,8 +17,6 @@ use Illuminate\View\View;
 class FillableFormController extends Controller
 {
     public function __construct(
-        private DocumentGenerationService $generator,
-        private GenerationValueResolverService $resolver,
         private DateFormatterService $dateFormatter,
     ) {}
 
@@ -33,10 +31,8 @@ class FillableFormController extends Controller
                 ->with('toast', 'Approve at least one variable before generating.');
         }
 
-        // Variables the user needs to fill (not fixed_hidden)
-        $formVars   = $template->approvedVariables->filter(fn($v) => !$v->isHiddenFromForm());
-        // Variables that are fixed and auto-filled (shown in summary only)
-        $fixedVars  = $template->approvedVariables->filter(fn($v) => $v->isFixed());
+        $formVars  = $template->approvedVariables->filter(fn($v) => !$v->isHiddenFromForm());
+        $fixedVars = $template->approvedVariables->filter(fn($v) => $v->isFixed());
 
         return view('fillable-form', compact('template', 'formVars', 'fixedVars'));
     }
@@ -46,12 +42,10 @@ class FillableFormController extends Controller
         $this->authorizeWorkspace($template);
         $template->load(['approvedVariables']);
 
-        // Only build validation rules for fields the user must fill
-        // Fixed fields are not submitted and not validated here
         $rules = [];
         foreach ($template->approvedVariables as $var) {
             if ($var->isHiddenFromForm()) {
-                continue; // fixed_hidden — auto-filled, no user input required
+                continue;
             }
 
             $rule = $var->is_required ? ['required', 'string', 'max:500'] : ['nullable', 'string', 'max:500'];
@@ -65,17 +59,12 @@ class FillableFormController extends Controller
             $rules['fields.' . $var->name] = $rule;
         }
 
-        $validated  = $request->validate($rules);
-        $userValues = $validated['fields'] ?? [];
-
-        // One-time overrides: user chose "Use a different value this time" for a fixed field
-        $overrides = $request->input('overrides', []);
-
-        // Keep-as-constant selections: [ var_name => '1' ]
+        $validated      = $request->validate($rules);
+        $userValues     = $validated['fields'] ?? [];
+        $overrides      = $request->input('overrides', []);
         $keepAsConstant = $request->input('keep_as_constant', []);
 
-        // Strip peso sign and commas from currency fields
-        // Format date fields from ISO (YYYY-MM-DD) to the template's detected format
+        // Pre-format values before handing off to the job
         foreach ($template->approvedVariables as $var) {
             if ($var->type === 'currency') {
                 if (isset($userValues[$var->name])) {
@@ -85,58 +74,50 @@ class FillableFormController extends Controller
                     $overrides[$var->name] = preg_replace('/[₱,\s]/', '', $overrides[$var->name]);
                 }
             } elseif ($var->type === 'date') {
-                // Format the ISO date into the document's expected format before generation.
-                // e.g. '2026-05-30' + date_format='F j, Y' → 'May 30, 2026'
                 if (!empty($userValues[$var->name])) {
-                    $userValues[$var->name] = $this->dateFormatter->format(
-                        $userValues[$var->name],
-                        $var->date_format
-                    );
+                    $userValues[$var->name] = $this->dateFormatter->format($userValues[$var->name], $var->date_format);
                 }
                 if (!empty($overrides[$var->name])) {
-                    $overrides[$var->name] = $this->dateFormatter->format(
-                        $overrides[$var->name],
-                        $var->date_format
-                    );
+                    $overrides[$var->name] = $this->dateFormatter->format($overrides[$var->name], $var->date_format);
                 }
             }
         }
 
-        try {
-            set_time_limit(180);
-            $generated = $this->generator->generate($template, $userValues, $overrides);
+        // Create a pending GeneratedDocument record immediately so the user can poll it.
+        // The job fills in file_path, file_name, and flips status to 'ready' on success.
+        $pending = GeneratedDocument::create([
+            'workspace_id'    => $template->workspace_id,
+            'user_id'         => auth()->id(),
+            'template_id'     => $template->id,
+            'variable_values' => $userValues,
+            'file_path'       => '',
+            'file_name'       => '',
+            'disk'            => 'documents',
+            'status'          => 'processing',
+        ]);
 
-            // Save keep-as-constant values as fixed fields after successful generation.
-            // We save AFTER generation so a failed generation never silently locks a value.
-            foreach ($template->approvedVariables as $var) {
-                if (empty($keepAsConstant[$var->name])) {
-                    continue;
-                }
-                $valueToSave = $userValues[$var->name] ?? $overrides[$var->name] ?? null;
-                if ($valueToSave === null || $valueToSave === '') {
-                    continue;
-                }
-                $var->update([
-                    'value_mode'                       => TemplateVariable::MODE_FIXED,
-                    'fixed_value'                      => $valueToSave,
-                    'fixed_value_set_by_user_id'       => auth()->id(),
-                    'fixed_value_set_at'               => now(),
-                    'fixed_value_set_by_generation_id' => $generated->id,
-                    'user_confirmed_mode'              => true,
-                    'show_when_fixed'                  => false,
-                ]);
-            }
+        GenerateDocumentJob::dispatch($pending, $template, $overrides, $keepAsConstant);
 
-            return redirect()->route('generation-result', $generated->id);
-        } catch (\Throwable $e) {
-            if (str_starts_with($e->getMessage(), 'NEEDS_REANALYSIS:')) {
-                return back()->with('error',
-                    'This PDF template needs to be re-analyzed before generating. ' .
-                    'Please delete this template and re-upload the PDF — the new analysis will detect field positions precisely.'
-                );
-            }
-            return back()->withInput()->with('error', 'Document generation failed: ' . $e->getMessage());
-        }
+        return redirect()->route('generation-loading', $pending->id);
+    }
+
+    // ── Status endpoint polled by generation-loading page ───────────
+
+    public function status(GeneratedDocument $generated): JsonResponse
+    {
+        $this->authorizeGeneratedDocument($generated);
+
+        return match ($generated->status) {
+            'ready' => response()->json([
+                'success'  => true,
+                'redirect' => route('generation-result', $generated->id),
+            ]),
+            'failed' => response()->json([
+                'error'   => true,
+                'message' => $generated->error_message ?? 'Document generation failed. Please try again.',
+            ], 500),
+            default => response()->json(['status' => 'processing'], 202),
+        };
     }
 
     public function download(GeneratedDocument $generated): StreamedResponse
