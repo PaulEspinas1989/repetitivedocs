@@ -5,29 +5,29 @@
 @endphp
 {{-- Compact inline approve/reject row — no page reload, no scroll jump --}}
 <div class="flex items-center gap-3 px-5 py-3.5 {{ !$loop->last ? 'border-b border-line' : '' }}"
-     x-data="{
+     x-data='{
          status:  @json($var->approval_status),
          loading: null,
-         csrf() { return document.querySelector('meta[name=csrf-token]')?.content ?? ''; },
+         csrf() { return document.querySelector("meta[name=csrf-token]")?.content ?? ""; },
          async doAction(action, url) {
              if (this.loading) return;
              this.loading = action;
              try {
                  const res  = await fetch(url, {
-                     method: 'POST',
-                     headers: { 'Accept': 'application/json', 'Content-Type': 'application/json', 'X-CSRF-TOKEN': this.csrf() },
+                     method: "POST",
+                     headers: { "Accept": "application/json", "Content-Type": "application/json", "X-CSRF-TOKEN": this.csrf() },
                  });
                  const data = await res.json();
-                 if (!res.ok || !data.success) throw new Error(data.message ?? 'Failed');
+                 if (!res.ok || !data.success) throw new Error(data.message ?? "Failed");
                  this.status = data.status;
-                 this.$dispatch('rd-status-change', { to: data.status, counts: data.counts, readiness: data.readiness, label: data.label });
+                 this.$dispatch("rd-status-change", { to: data.status, counts: data.counts, readiness: data.readiness, label: data.label });
              } catch (e) {
-                 if (typeof window.rdToast === 'function') window.rdToast('Could not update field. Please try again.', 'error');
+                 if (typeof window.rdToast === "function") window.rdToast("Could not update field. Please try again.", "error");
              } finally { this.loading = null; }
          },
-         approve() { this.doAction('approving', @json($approveUrl)); },
-         reject()  { this.doAction('rejecting', @json($rejectUrl));  },
-         undo()    { this.doAction('undoing',   @json($undoUrl));    },
+         approve() { this.doAction("approving", @json($approveUrl)); },
+         reject()  { this.doAction("rejecting", @json($rejectUrl));  },
+         undo()    { this.doAction("undoing",   @json($undoUrl));    },
      }">
 
     {{-- Type badge --}}

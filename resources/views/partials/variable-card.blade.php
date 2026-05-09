@@ -40,17 +40,17 @@
          'border-danger/30 bg-danger/5':   status === 'rejected',
          'border-line bg-white':           status === 'pending',
      }"
-     x-data="{
+     x-data='{
          status:    @json($var->approval_status),
          loading:   null,
          error:     null,
          editing:   {{ $editingInit }},
-         label:     @json(old('label', $var->label)),
-         type:      @json(old('type', $var->type)),
+         label:     @json(old("label", $var->label)),
+         type:      @json(old("type", $var->type)),
          valueMode: @json($currentMode),
 
          csrf() {
-             return document.querySelector('meta[name=csrf-token]')?.content ?? '';
+             return document.querySelector("meta[name=csrf-token]")?.content ?? "";
          },
 
          async doAction(action, url) {
@@ -59,35 +59,34 @@
              this.error   = null;
              try {
                  const res  = await fetch(url, {
-                     method: 'POST',
+                     method: "POST",
                      headers: {
-                         'Accept':       'application/json',
-                         'Content-Type': 'application/json',
-                         'X-CSRF-TOKEN': this.csrf(),
+                         "Accept":       "application/json",
+                         "Content-Type": "application/json",
+                         "X-CSRF-TOKEN": this.csrf(),
                      },
                  });
                  const data = await res.json();
-                 if (!res.ok || !data.success) throw new Error(data.message ?? 'Request failed');
+                 if (!res.ok || !data.success) throw new Error(data.message ?? "Request failed");
                  this.status = data.status;
-                 // Notify parent so tab badges update without page reload
-                 this.$dispatch('rd-status-change', {
-                     from:     action === 'undo' ? (this.status === 'pending' ? data.status : 'pending') : this.status,
-                     to:       data.status,
-                     counts:   data.counts,
+                 this.$dispatch("rd-status-change", {
+                     from:      action === "undo" ? (this.status === "pending" ? data.status : "pending") : this.status,
+                     to:        data.status,
+                     counts:    data.counts,
                      readiness: data.readiness,
-                     label:    data.label,
+                     label:     data.label,
                  });
              } catch (e) {
-                 this.error = e.message || 'Something went wrong. Please try again.';
+                 this.error = e.message || "Something went wrong. Please try again.";
              } finally {
                  this.loading = null;
              }
          },
 
-         approve() { this.doAction('approving', @json($approveUrl)); },
-         reject()  { this.doAction('rejecting', @json($rejectUrl));  },
-         undo()    { this.doAction('undoing',   @json($undoUrl));    },
-     }"
+         approve() { this.doAction("approving", @json($approveUrl)); },
+         reject()  { this.doAction("rejecting", @json($rejectUrl));  },
+         undo()    { this.doAction("undoing",   @json($undoUrl));    },
+     }'
      style="padding: 1.25rem;">
 
     {{-- ── Inline error bar ─────────────────────────────────────────── --}}
