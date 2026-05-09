@@ -1,0 +1,15 @@
+[Unit]
+Description=RepetitiveDocs PDF Microservice
+After=network.target
+
+[Service]
+User=www-data
+WorkingDirectory=/var/www/repetitivedocs/python-pdf-service
+ExecStart=/usr/bin/python3 -m gunicorn -w 2 -b 127.0.0.1:5050 --timeout 300 app:app
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

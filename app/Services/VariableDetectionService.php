@@ -15,6 +15,7 @@ class VariableDetectionService
     public function __construct(
         private AIProviderService $ai,
         private DateFormatterService $dateFormatter,
+        private PdfMicroserviceService $pdfService,
     ) {}
 
     /**
@@ -44,15 +45,11 @@ class VariableDetectionService
                 'status'               => 'draft',
             ]);
 
-            // For PDF: extract text positions for overlay rendering
-            $pdfTextElements = [];
-            if ($doc->isPdf()) {
-                $pdfTextElements = $this->extractPdfTextElements(
-                    Storage::disk($doc->disk)->path($doc->path)
-                );
-            }
-
             $docText = $variables['document_text'] ?? '';
+
+            // pdfplumber positions: exact word-level bboxes from the Python service
+            // keyed by example_value string. Only populated for PDF documents.
+            $pdfplumberPositions = $variables['_pdfplumber_positions'] ?? [];
 
             foreach ($variableList as $v) {
                 $exampleValue = $v['example_value'] ?? null;
@@ -67,10 +64,17 @@ class VariableDetectionService
                     $occurrences = max(1, (int) $count);
                 }
 
-                // Find ALL text positions for this value across ALL pages
+                // Use pdfplumber exact positions (preferred) or fall back to old pdftohtml method
                 $allPositions = [];
-                if ($doc->isPdf() && !empty($exampleValue) && !empty($pdfTextElements)) {
-                    $allPositions = $this->findAllTextPositions($pdfTextElements, $exampleValue);
+                if ($doc->isPdf() && !empty($exampleValue)) {
+                    $allPositions = $pdfplumberPositions[$exampleValue] ?? [];
+                    // Convert Python service format to internal format if needed
+                    foreach ($allPositions as &$pos) {
+                        // Python returns x0/y0/x1/y1 in PDF points + x_pct/y_pct/w_pct/h_pct
+                        // Internal format also needs 'page' key (Python returns 'page' already)
+                        $pos['page'] = $pos['page'] ?? 1;
+                    }
+                    unset($pos);
                 }
 
                 $textPositions = !empty($allPositions) ? $allPositions : null;
@@ -224,10 +228,16 @@ class VariableDetectionService
                     'casing_pattern'       => $casingPattern,
                     'detection_source'     => 'pdf_position',
                     'bounding_box'         => [
-                        'x_pct' => $pos['x_pct'],
-                        'y_pct' => $pos['y_pct'],
-                        'w_pct' => $pos['w_pct'],
-                        'h_pct' => $pos['h_pct'],
+                        // PDF-point coords for exact reportlab overlay generation
+                        'x0'    => (float) ($pos['x0'] ?? 0),
+                        'y0'    => (float) ($pos['y0'] ?? 0),
+                        'x1'    => (float) ($pos['x1'] ?? 0),
+                        'y1'    => (float) ($pos['y1'] ?? 0),
+                        // Percentages kept for fallback/display
+                        'x_pct' => (float) ($pos['x_pct'] ?? 0),
+                        'y_pct' => (float) ($pos['y_pct'] ?? 0),
+                        'w_pct' => (float) ($pos['w_pct'] ?? 0),
+                        'h_pct' => (float) ($pos['h_pct'] ?? 0),
                     ],
                     'style_snapshot'       => [
                         'font_size'   => $pos['font_size']   ?? 10,
@@ -354,94 +364,72 @@ class VariableDetectionService
     }
 
     /**
-     * Vision-based PDF analysis.
+     * pdfplumber-based PDF analysis.
      *
-     * Why: The old approach sent the PDF binary (PDF beta header) and separately
-     * ran pdftohtml to find text coordinates — two independent systems that
-     * consistently produce coordinate mismatches, so generated values appear in
-     * the wrong position or not at all.
+     * Flow:
+     *   1. Python /analyze extracts exact text + word positions (PDF points)
+     *   2. Send extracted text to Claude (text prompt, no images) → variable candidates
+     *   3. Python /find-positions locates each candidate's example_value exactly
+     *   4. Store precise bounding boxes in variable_occurrences
      *
-     * New approach:
-     *   1. Rasterize PDF → PNG images (same tool/DPI used at generation time)
-     *   2. Send those images to Claude Vision in one call
-     *   3. Claude sees the SAME visual layout and returns bounding boxes as
-     *      fractions of the image — the exact coordinate system generation uses
-     *   4. Zero coordinate mismatch possible
+     * Why this beats the Vision approach: pdfplumber reads the PDF content stream
+     * and returns exact word coordinates — the same coordinate system reportlab
+     * uses for overlay generation. No approximation, no mismatch.
+     *
+     * Falls back to text analysis if Python service is unavailable.
      */
     private function analyzeWithPdf(UploadedDocument $doc): array
     {
         $pdfPath = Storage::disk($doc->disk)->path($doc->path);
-        $tmpDir  = sys_get_temp_dir() . '/rdoc_vision_' . uniqid();
-        mkdir($tmpDir, 0777, true);
 
-        try {
-            // Rasterize at 100 DPI — sufficient for Vision to read text clearly,
-            // cheaper on tokens than 150 DPI. Generation still uses 150 DPI for
-            // output quality; bounding box percentages are DPI-independent.
-            exec('pdftoppm -r 100 -png ' . escapeshellarg($pdfPath) . ' ' . escapeshellarg($tmpDir . '/page') . ' 2>/dev/null');
-
-            $images = glob($tmpDir . '/page-*.png') ?: glob($tmpDir . '/page*.png') ?: [];
-            natsort($images);
-            $images = array_values($images);
-
-            if (empty($images)) {
-                \Illuminate\Support\Facades\Log::warning('VariableDetection: pdftoppm produced no images — falling back to text analysis', [
-                    'doc_id' => $doc->id,
-                    'path'   => $pdfPath,
-                ]);
-                return $this->analyzeWithText($doc);
-            }
-
-            // Build Vision API message: encode one image at a time and immediately
-            // discard the raw bytes to avoid holding all pages in memory simultaneously.
-            $content = [];
-            foreach ($images as $idx => $imgPath) {
-                $imgBytes = file_get_contents($imgPath);
-                if ($imgBytes === false || $imgBytes === '') {
-                    continue;
-                }
-                $content[] = ['type' => 'text', 'text' => 'PAGE ' . ($idx + 1) . ':'];
-                $content[] = [
-                    'type'   => 'image',
-                    'source' => [
-                        'type'       => 'base64',
-                        'media_type' => 'image/png',
-                        'data'       => base64_encode($imgBytes),
-                    ],
-                ];
-                unset($imgBytes); // free raw PNG bytes immediately after encoding
-            }
-
-            if (count($content) === 0) {
-                return $this->analyzeWithText($doc);
-            }
-
-            // Sanitize template name before embedding in prompt (user-controlled input).
-            $safeName = mb_substr(preg_replace('/["\\\\\n\r]/', ' ', $doc->template_name), 0, 100);
-            $content[] = ['type' => 'text', 'text' => $this->buildVisionPrompt($safeName)];
-
-            $response = $this->ai->messages(
-                messages: [['role' => 'user', 'content' => $content]],
-                model:    $this->ai->smartModel(),
-                maxTokens: 8192,
-            );
-
-            $data = $this->parseResponse($response);
-
-            // Also extract full text for search/context storage
-            $pdfText = $this->extractPdfText($pdfPath);
-            if (!empty($pdfText)) {
-                $data['document_text'] = $pdfText;
-            }
-
-            return $data;
-
-        } finally {
-            foreach (glob($tmpDir . '/*') ?: [] as $f) {
-                @unlink($f);
-            }
-            @rmdir($tmpDir);
+        // Check Python service availability; fall back to text analysis if down
+        if (!$this->pdfService->isAvailable()) {
+            \Illuminate\Support\Facades\Log::warning('VariableDetection: PDF microservice unavailable — falling back to text analysis', [
+                'doc_id' => $doc->id,
+            ]);
+            return $this->analyzeWithText($doc);
         }
+
+        // Step 1: pdfplumber extracts text + word positions
+        $extracted = $this->pdfService->analyze($pdfPath);
+        $fullText  = $extracted['full_text'] ?? '';
+
+        if (empty(trim($fullText))) {
+            return $this->analyzeWithText($doc);
+        }
+
+        // Step 2: Send extracted text to Claude for variable identification
+        // (text prompt, no images — faster, cheaper, no Vision approximation)
+        $response = $this->ai->messages(
+            messages: [
+                [
+                    'role'    => 'user',
+                    'content' => "Document content:\n\n{$fullText}\n\n" . $this->buildPrompt($doc->template_name),
+                ],
+            ],
+            model:     $this->ai->smartModel(),
+            maxTokens: 8192,
+        );
+
+        $data = $this->parseResponse($response);
+
+        // Store extracted text for search/context
+        $data['document_text'] = $fullText;
+
+        // Step 3: For each variable Claude identified, find exact PDF positions
+        // using pdfplumber — these are in PDF points, exact, no approximation
+        $exampleValues = array_filter(
+            array_column($data['variables'] ?? [], 'example_value'),
+            fn($v) => !empty($v) && mb_strlen(trim($v)) >= 2
+        );
+
+        if (!empty($exampleValues)) {
+            $positions = $this->pdfService->findPositions($pdfPath, array_values($exampleValues));
+            // Attach positions back to the variable data for createOccurrenceRecords
+            $data['_pdfplumber_positions'] = $positions;
+        }
+
+        return $data;
     }
 
     private function buildVisionPrompt(string $templateName): string

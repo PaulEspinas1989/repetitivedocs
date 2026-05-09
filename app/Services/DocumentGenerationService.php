@@ -13,6 +13,7 @@ class DocumentGenerationService
 {
     public function __construct(
         private GenerationValueResolverService $resolver,
+        private PdfMicroserviceService $pdfService,
     ) {}
 
     /**
@@ -102,14 +103,7 @@ class DocumentGenerationService
         if ($doc && $doc->isDocx()) {
             return $this->buildDocxFile($template, $doc, $resolvedValues);
         } elseif ($doc && $doc->isPdf()) {
-            // PDF overlay creates a DB record internally; job will delete the orphan.
-            $generated = $this->generateFromPdfOverlay($template, $doc, $resolvedValues);
-            return [
-                'file_path'     => $generated->file_path,
-                'file_name'     => $generated->file_name,
-                'disk'          => $generated->disk,
-                '_orphan_id'    => $generated->id,
-            ];
+            return $this->buildPdfOverlayFile($template, $doc, $resolvedValues);
         } else {
             return $this->buildHtmlFile($template, $resolvedValues);
         }
@@ -224,9 +218,79 @@ class DocumentGenerationService
         return ['file_path' => $path, 'file_name' => $fileName, 'disk' => 'documents'];
     }
 
-    // ── PDF overlay generation (preserves original PDF formatting) ───
+    // ── PDF overlay generation — Python microservice (pdfplumber + reportlab) ──
 
     private function generateFromPdfOverlay(Template $template, $doc, array $values): GeneratedDocument
+    {
+        $file = $this->buildPdfOverlayFile($template, $doc, $values);
+        return GeneratedDocument::create([
+            'workspace_id'    => $template->workspace_id,
+            'user_id'         => auth()->id(),
+            'template_id'     => $template->id,
+            'variable_values' => $values,
+            'file_path'       => $file['file_path'],
+            'file_name'       => $file['file_name'],
+            'disk'            => 'documents',
+            'status'          => 'ready',
+        ]);
+    }
+
+    private function buildPdfOverlayFile(Template $template, $doc, array $values): array
+    {
+        $pdfPath = Storage::disk($doc->disk)->path($doc->path);
+        $replacements = [];
+
+        foreach ($template->approvedVariables as $var) {
+            $newValue = $values[$var->name] ?? null;
+            if ($newValue === null || $newValue === '') {
+                continue;
+            }
+
+            $positions = $var->resolveOverlayPositions();
+            foreach ($positions as $pos) {
+                // Only include positions that have PDF-point coordinates (from pdfplumber)
+                if (empty($pos['x0']) && empty($pos['x1'])) {
+                    continue;
+                }
+
+                $display = $this->applyCasingFromOccurrence($newValue, $pos);
+                $display = $this->applyPrefixSuffix($display, $pos);
+
+                $replacements[] = [
+                    'page'       => (int)   ($pos['page']        ?? 1),
+                    'x0'         => (float) ($pos['x0']          ?? 0),
+                    'y0'         => (float) ($pos['y0']          ?? 0),
+                    'x1'         => (float) ($pos['x1']          ?? 0),
+                    'y1'         => (float) ($pos['y1']          ?? 0),
+                    'new_text'   => $display,
+                    'font_size'  => (float) ($pos['font_size']   ?? 10),
+                    'is_bold'    => ($pos['font_weight'] ?? 'normal') === 'bold',
+                    'text_align' => $pos['text_align']  ?? 'L',
+                    'font_color' => $pos['font_color']  ?? '#000000',
+                ];
+            }
+        }
+
+        if (empty($replacements)) {
+            throw new \RuntimeException(
+                'NEEDS_REANALYSIS: This PDF template needs to be re-analyzed. ' .
+                'Delete it and re-upload the PDF to detect precise field positions.'
+            );
+        }
+
+        $pdfBytes = $this->pdfService->generate($pdfPath, $replacements);
+
+        $fileName = Str::slug($template->name) . '-' . now()->format('Ymd-His') . '.pdf';
+        $path     = 'workspaces/' . $template->workspace_id . '/generated/' . $fileName;
+        Storage::disk('documents')->put($path, $pdfBytes);
+
+        return ['file_path' => $path, 'file_name' => $fileName, 'disk' => 'documents'];
+    }
+
+    // ── LEGACY FPDF code below — kept only for reference, not called ──────
+    // TODO: remove after Python service confirmed stable in production
+
+    private function generateFromPdfOverlayLegacy(Template $template, $doc, array $values): GeneratedDocument
     {
         $pdfPath = Storage::disk($doc->disk)->path($doc->path);
         $tmpDir  = sys_get_temp_dir() . '/rdoc_gen_' . uniqid();
@@ -397,15 +461,7 @@ class DocumentGenerationService
 
     private function generateFileFromPdfOverlay(Template $template, $doc, array $values): array
     {
-        // generateFromPdfOverlay already stores the file; we capture the path via a workaround.
-        // For the job path we run the same logic but return the file info array.
-        $generated = $this->generateFromPdfOverlay($template, $doc, $values);
-        return [
-            'file_path' => $generated->file_path,
-            'file_name' => $generated->file_name,
-            'disk'      => $generated->disk,
-            '_generated_id' => $generated->id, // job will delete this orphan record
-        ];
+        return $this->buildPdfOverlayFile($template, $doc, $values);
     }
 
     // ── HTML/PDF generation (PDF uploads or fallback) ─────────────────

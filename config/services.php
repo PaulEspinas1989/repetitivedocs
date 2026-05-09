@@ -42,4 +42,8 @@ return [
         'api_version'  => '2023-06-01',
     ],
 
+    'pdf_microservice' => [
+        'url' => env('PDF_MICROSERVICE_URL', 'http://127.0.0.1:5050'),
+    ],
+
 ];

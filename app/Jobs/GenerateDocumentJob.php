@@ -50,11 +50,6 @@ class GenerateDocumentJob implements ShouldQueue
             // Generate the actual file using the resolved values
             $fileInfo = $generator->generateFile($this->template, $resolvedValues);
 
-            // PDF overlay creates an orphan GeneratedDocument internally — delete it
-            if (!empty($fileInfo['_orphan_id'])) {
-                GeneratedDocument::find($fileInfo['_orphan_id'])?->delete();
-            }
-
             // Save keep-as-constant values after successful generation
             foreach ($this->template->approvedVariables as $var) {
                 if (empty($this->keepAsConstant[$var->name])) {

@@ -48,15 +48,20 @@ class VariableOccurrence extends Model
     public function toOverlayPosition(): ?array
     {
         $bbox = $this->bounding_box;
-        if (empty($bbox) || !isset($bbox['x_pct'])) {
+        if (empty($bbox) || (!isset($bbox['x_pct']) && !isset($bbox['x0']))) {
             return null;
         }
 
-        // Cast guarantees null → [] but be explicit to survive future cast changes
         $style = $this->style_snapshot ?: [];
 
         return [
             'page'             => $this->page_number ?? 1,
+            // PDF-point coords (from pdfplumber) — used by Python /generate
+            'x0'              => (float)  ($bbox['x0']    ?? 0),
+            'y0'              => (float)  ($bbox['y0']    ?? 0),
+            'x1'              => (float)  ($bbox['x1']    ?? 0),
+            'y1'              => (float)  ($bbox['y1']    ?? 0),
+            // Percentage coords — kept for display/legacy
             'x_pct'           => (float)  ($bbox['x_pct'] ?? 0),
             'y_pct'           => (float)  ($bbox['y_pct'] ?? 0),
             'w_pct'           => (float)  ($bbox['w_pct'] ?? 0),
@@ -66,7 +71,6 @@ class VariableOccurrence extends Model
             'font_family'      => (string) ($style['font_family'] ?? ''),
             'font_weight'      => (string) ($style['font_weight'] ?? 'normal'),
             'text_align'       => (string) ($style['text_align']  ?? 'L'),
-            // Context for style-preserving rendering (prefix/suffix + casing)
             'prefix_text'      => (string) ($this->prefix_text      ?? ''),
             'suffix_text'      => (string) ($this->suffix_text      ?? ''),
             'original_text'    => (string) ($this->original_text    ?? ''),
