@@ -245,19 +245,20 @@ class VariableDetectionService
                 $originalText  = $occ['original_text'] ?? $exampleValue ?? '';
                 $casingPattern = $occ['casing_pattern'] ?? $this->detectCasingPattern($originalText);
 
-                // Extract Vision-provided bounding box (x_pct, y_pct, w_pct, h_pct)
+                // Extract Vision-provided bounding box. Accept partial bboxes —
+                // if any coordinate is missing use a sensible default so we don't
+                // discard a partially-valid position.
+                $rawBbox = $occ['bounding_box'] ?? null;
                 $bbox = null;
-                if (
-                    isset($occ['bounding_box']['x_pct']) &&
-                    isset($occ['bounding_box']['y_pct']) &&
-                    isset($occ['bounding_box']['w_pct']) &&
-                    isset($occ['bounding_box']['h_pct'])
-                ) {
+                if (is_array($rawBbox) && (
+                    isset($rawBbox['x_pct']) || isset($rawBbox['y_pct']) ||
+                    isset($rawBbox['w_pct']) || isset($rawBbox['h_pct'])
+                )) {
                     $bbox = [
-                        'x_pct' => (float) $occ['bounding_box']['x_pct'],
-                        'y_pct' => (float) $occ['bounding_box']['y_pct'],
-                        'w_pct' => (float) $occ['bounding_box']['w_pct'],
-                        'h_pct' => (float) $occ['bounding_box']['h_pct'],
+                        'x_pct' => (float) ($rawBbox['x_pct'] ?? 0.05),
+                        'y_pct' => (float) ($rawBbox['y_pct'] ?? 0.05),
+                        'w_pct' => (float) ($rawBbox['w_pct'] ?? 0.30),
+                        'h_pct' => (float) ($rawBbox['h_pct'] ?? 0.03),
                     ];
                 }
 
@@ -384,15 +385,19 @@ class VariableDetectionService
             $images = array_values($images);
 
             if (empty($images)) {
-                // pdftoppm not available — fall through to text analysis
+                \Illuminate\Support\Facades\Log::warning('VariableDetection: pdftoppm produced no images — falling back to text analysis', [
+                    'doc_id' => $doc->id,
+                    'path'   => $pdfPath,
+                ]);
                 return $this->analyzeWithText($doc);
             }
 
-            // Build Vision API message: page labels + images + prompt
+            // Build Vision API message: encode one image at a time and immediately
+            // discard the raw bytes to avoid holding all pages in memory simultaneously.
             $content = [];
             foreach ($images as $idx => $imgPath) {
                 $imgBytes = file_get_contents($imgPath);
-                if (!$imgBytes) {
+                if ($imgBytes === false || $imgBytes === '') {
                     continue;
                 }
                 $content[] = ['type' => 'text', 'text' => 'PAGE ' . ($idx + 1) . ':'];
@@ -404,13 +409,16 @@ class VariableDetectionService
                         'data'       => base64_encode($imgBytes),
                     ],
                 ];
+                unset($imgBytes); // free raw PNG bytes immediately after encoding
             }
 
             if (count($content) === 0) {
                 return $this->analyzeWithText($doc);
             }
 
-            $content[] = ['type' => 'text', 'text' => $this->buildVisionPrompt($doc->template_name)];
+            // Sanitize template name before embedding in prompt (user-controlled input).
+            $safeName = mb_substr(preg_replace('/["\\\\\n\r]/', ' ', $doc->template_name), 0, 100);
+            $content[] = ['type' => 'text', 'text' => $this->buildVisionPrompt($safeName)];
 
             $response = $this->ai->messages(
                 messages: [['role' => 'user', 'content' => $content]],

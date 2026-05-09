@@ -13,7 +13,6 @@ class DocumentGenerationService
 {
     public function __construct(
         private GenerationValueResolverService $resolver,
-        private VariableDetectionService $detector,
     ) {}
 
     /**
