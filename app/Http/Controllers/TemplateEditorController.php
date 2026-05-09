@@ -325,6 +325,7 @@ class TemplateEditorController extends Controller
     private function syncReadiness(Template $template): array
     {
         $rows = $template->variables()
+            ->reorder() // clear default sort_order — PostgreSQL requires ORDER BY cols in GROUP BY
             ->selectRaw('approval_status, COALESCE(needs_review, false) as nr, count(*) as cnt')
             ->groupBy('approval_status', 'nr')
             ->get();
