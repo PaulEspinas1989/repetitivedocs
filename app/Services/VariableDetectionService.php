@@ -361,7 +361,7 @@ class VariableDetectionService
         return $data;
     }
 
-    private function extractPdfTextElements(string $pdfPath): array
+    public function extractPdfTextElements(string $pdfPath): array
     {
         if (!file_exists($pdfPath)) {
             return [];
@@ -449,7 +449,7 @@ class VariableDetectionService
      * Find ALL positions of the search value across all pages.
      * Previously only captured the first match per page — now returns every match.
      */
-    private function findAllTextPositions(array $elements, string $search): array
+    public function findAllTextPositions(array $elements, string $search): array
     {
         $search = trim($search);
 

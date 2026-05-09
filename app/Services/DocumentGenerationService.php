@@ -12,7 +12,8 @@ use ZipArchive;
 class DocumentGenerationService
 {
     public function __construct(
-        private GenerationValueResolverService $resolver
+        private GenerationValueResolverService $resolver,
+        private VariableDetectionService $detector,
     ) {}
 
     /**
@@ -194,6 +195,34 @@ class DocumentGenerationService
             $pdf->SetAutoPageBreak(false);
             $pdf->SetMargins(0, 0, 0);
 
+            // Live position fallback: if variables have no stored positions, run pdftohtml
+            // now to find where example_value text appears in the PDF.
+            // This handles templates where position detection failed during AI analysis.
+            $liveElements = [];
+            $needsLiveLookup = false;
+            foreach ($template->approvedVariables as $var) {
+                if (!empty($values[$var->name]) && empty($var->resolveOverlayPositions())) {
+                    $needsLiveLookup = true;
+                    break;
+                }
+            }
+            if ($needsLiveLookup) {
+                $liveElements = $this->detector->extractPdfTextElements($pdfPath);
+            }
+
+            // Build live positions per variable (only for those with no stored positions)
+            $livePositions = [];
+            if (!empty($liveElements)) {
+                foreach ($template->approvedVariables as $var) {
+                    if (!empty($var->example_value) && empty($var->resolveOverlayPositions())) {
+                        $found = $this->detector->findAllTextPositions($liveElements, $var->example_value);
+                        if (!empty($found)) {
+                            $livePositions[$var->name] = $found;
+                        }
+                    }
+                }
+            }
+
             foreach ($images as $idx => $imgPath) {
                 $pageNum = $idx + 1;
 
@@ -214,15 +243,12 @@ class DocumentGenerationService
                     }
 
                     // Use richer occurrence-based positions when available,
-                    // fall back to legacy text_positions JSON
+                    // then legacy text_positions, then live pdftohtml lookup.
                     $positions = $var->resolveOverlayPositions();
+                    if (empty($positions) && isset($livePositions[$var->name])) {
+                        $positions = $livePositions[$var->name];
+                    }
                     if (empty($positions)) {
-                        \Illuminate\Support\Facades\Log::warning('Generation: no positions for var', [
-                            'var_name'        => $var->name,
-                            'has_occurrences' => $var->relationLoaded('activeOccurrences'),
-                            'occurrence_count' => $var->relationLoaded('activeOccurrences') ? $var->activeOccurrences->count() : 'not loaded',
-                            'text_positions'  => !empty($var->text_positions) ? count($var->text_positions) : 0,
-                        ]);
                         continue;
                     }
 

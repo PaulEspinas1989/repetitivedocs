@@ -152,11 +152,18 @@ class TemplateVariable extends Model
     public function resolveOverlayPositions(): array
     {
         if ($this->relationLoaded('activeOccurrences') && $this->activeOccurrences->isNotEmpty()) {
-            return $this->activeOccurrences
+            $positions = $this->activeOccurrences
                 ->map(fn($occ) => $occ->toOverlayPosition())
                 ->filter()
                 ->values()
                 ->all();
+
+            // Only use occurrence-based positions if at least one has a valid bbox.
+            // If every occurrence has null bounding_box (position detection failed during
+            // AI analysis), fall through to the text_positions legacy array.
+            if (!empty($positions)) {
+                return $positions;
+            }
         }
 
         // Normalise legacy positions — guarantee all keys (including new rendering context)
