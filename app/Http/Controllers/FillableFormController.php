@@ -103,6 +103,7 @@ class FillableFormController extends Controller
         }
 
         try {
+            set_time_limit(180);
             $generated = $this->generator->generate($template, $userValues, $overrides);
 
             // Save keep-as-constant values as fixed fields after successful generation.
@@ -128,6 +129,12 @@ class FillableFormController extends Controller
 
             return redirect()->route('generation-result', $generated->id);
         } catch (\Throwable $e) {
+            if (str_starts_with($e->getMessage(), 'NEEDS_REANALYSIS:')) {
+                return back()->with('error',
+                    'This PDF template needs to be re-analyzed before generating. ' .
+                    'Please delete this template and re-upload the PDF — the new analysis will detect field positions precisely.'
+                );
+            }
             return back()->withInput()->with('error', 'Document generation failed: ' . $e->getMessage());
         }
     }

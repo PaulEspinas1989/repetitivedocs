@@ -239,9 +239,33 @@ class VariableDetectionService
                 ]);
             }
         } elseif (!empty($aiOccurrences)) {
+            // Vision-based path: AI occurrences carry bounding_box directly.
+            // Use them — no pdftohtml coordinate lookup needed.
             foreach ($aiOccurrences as $occ) {
                 $originalText  = $occ['original_text'] ?? $exampleValue ?? '';
-                $casingPattern = $this->detectCasingPattern($originalText);
+                $casingPattern = $occ['casing_pattern'] ?? $this->detectCasingPattern($originalText);
+
+                // Extract Vision-provided bounding box (x_pct, y_pct, w_pct, h_pct)
+                $bbox = null;
+                if (
+                    isset($occ['bounding_box']['x_pct']) &&
+                    isset($occ['bounding_box']['y_pct']) &&
+                    isset($occ['bounding_box']['w_pct']) &&
+                    isset($occ['bounding_box']['h_pct'])
+                ) {
+                    $bbox = [
+                        'x_pct' => (float) $occ['bounding_box']['x_pct'],
+                        'y_pct' => (float) $occ['bounding_box']['y_pct'],
+                        'w_pct' => (float) $occ['bounding_box']['w_pct'],
+                        'h_pct' => (float) $occ['bounding_box']['h_pct'],
+                    ];
+                }
+
+                $isBold = !empty($occ['is_bold']);
+                $align  = strtoupper($occ['text_align'] ?? 'L');
+                if (!in_array($align, ['L', 'C', 'R'], true)) {
+                    $align = 'L';
+                }
 
                 VariableOccurrence::create([
                     'template_variable_id' => $variable->id,
@@ -260,11 +284,18 @@ class VariableDetectionService
                     'confidence_pct'       => isset($occ['confidence_score'])
                                              ? (int) round($occ['confidence_score'] * 100) : 100,
                     'status'               => 'active',
-                    // New detection metadata
                     'source_area'          => $occ['source_area']  ?? 'body',
                     'nearby_label'         => $occ['nearby_label'] ?? null,
-                    'casing_pattern'       => $occ['casing_pattern'] ?? $casingPattern,
-                    'detection_source'     => 'ai_occurrence',
+                    'casing_pattern'       => $casingPattern,
+                    'detection_source'     => 'vision',
+                    'bounding_box'         => $bbox,
+                    'style_snapshot'       => $bbox ? [
+                        'font_size'   => 10,
+                        'font_color'  => '#000000',
+                        'font_family' => '',
+                        'font_weight' => $isBold ? 'bold' : 'normal',
+                        'text_align'  => $align,
+                    ] : null,
                 ]);
             }
         } elseif (!empty($exampleValue)) {
@@ -321,44 +352,142 @@ class VariableDetectionService
         return 'mixed';
     }
 
+    /**
+     * Vision-based PDF analysis.
+     *
+     * Why: The old approach sent the PDF binary (PDF beta header) and separately
+     * ran pdftohtml to find text coordinates — two independent systems that
+     * consistently produce coordinate mismatches, so generated values appear in
+     * the wrong position or not at all.
+     *
+     * New approach:
+     *   1. Rasterize PDF → PNG images (same tool/DPI used at generation time)
+     *   2. Send those images to Claude Vision in one call
+     *   3. Claude sees the SAME visual layout and returns bounding boxes as
+     *      fractions of the image — the exact coordinate system generation uses
+     *   4. Zero coordinate mismatch possible
+     */
     private function analyzeWithPdf(UploadedDocument $doc): array
     {
-        $fileContent = Storage::disk($doc->disk)->get($doc->path);
-        $base64      = base64_encode($fileContent);
+        $pdfPath = Storage::disk($doc->disk)->path($doc->path);
+        $tmpDir  = sys_get_temp_dir() . '/rdoc_vision_' . uniqid();
+        mkdir($tmpDir, 0777, true);
 
-        $response = $this->ai->messages(
-            messages: [
-                [
-                    'role'    => 'user',
-                    'content' => [
-                        [
-                            'type'   => 'document',
-                            'source' => [
-                                'type'       => 'base64',
-                                'media_type' => 'application/pdf',
-                                'data'       => $base64,
-                            ],
-                        ],
-                        [
-                            'type' => 'text',
-                            'text' => $this->buildPrompt($doc->template_name, skipDocumentText: true),
-                        ],
+        try {
+            // Rasterize at 100 DPI — sufficient for Vision to read text clearly,
+            // cheaper on tokens than 150 DPI. Generation still uses 150 DPI for
+            // output quality; bounding box percentages are DPI-independent.
+            exec('pdftoppm -r 100 -png ' . escapeshellarg($pdfPath) . ' ' . escapeshellarg($tmpDir . '/page') . ' 2>/dev/null');
+
+            $images = glob($tmpDir . '/page-*.png') ?: glob($tmpDir . '/page*.png') ?: [];
+            natsort($images);
+            $images = array_values($images);
+
+            if (empty($images)) {
+                // pdftoppm not available — fall through to text analysis
+                return $this->analyzeWithText($doc);
+            }
+
+            // Build Vision API message: page labels + images + prompt
+            $content = [];
+            foreach ($images as $idx => $imgPath) {
+                $imgBytes = file_get_contents($imgPath);
+                if (!$imgBytes) {
+                    continue;
+                }
+                $content[] = ['type' => 'text', 'text' => 'PAGE ' . ($idx + 1) . ':'];
+                $content[] = [
+                    'type'   => 'image',
+                    'source' => [
+                        'type'       => 'base64',
+                        'media_type' => 'image/png',
+                        'data'       => base64_encode($imgBytes),
                     ],
-                ],
-            ],
-            model:       $this->ai->smartModel(),
-            maxTokens:   8192,
-            betaHeaders: ['pdfs-2024-09-25'],
-        );
+                ];
+            }
 
-        $data = $this->parseResponse($response);
+            if (count($content) === 0) {
+                return $this->analyzeWithText($doc);
+            }
 
-        $pdfText = $this->extractPdfText(Storage::disk($doc->disk)->path($doc->path));
-        if (!empty($pdfText)) {
-            $data['document_text'] = $pdfText;
+            $content[] = ['type' => 'text', 'text' => $this->buildVisionPrompt($doc->template_name)];
+
+            $response = $this->ai->messages(
+                messages: [['role' => 'user', 'content' => $content]],
+                model:    $this->ai->smartModel(),
+                maxTokens: 8192,
+            );
+
+            $data = $this->parseResponse($response);
+
+            // Also extract full text for search/context storage
+            $pdfText = $this->extractPdfText($pdfPath);
+            if (!empty($pdfText)) {
+                $data['document_text'] = $pdfText;
+            }
+
+            return $data;
+
+        } finally {
+            foreach (glob($tmpDir . '/*') ?: [] as $f) {
+                @unlink($f);
+            }
+            @rmdir($tmpDir);
         }
+    }
 
-        return $data;
+    private function buildVisionPrompt(string $templateName): string
+    {
+        return <<<PROMPT
+You are analyzing the pages of a Philippine government/business document template called "{$templateName}".
+
+TASK: Find every text value that must change when this document is personalized for a different recipient, date, amount, or transaction. Return ALL occurrences of each variable — even if the same name appears 7 times, list all 7 with separate bounding boxes.
+
+BOUNDING BOXES: For every occurrence, measure its position as a fraction of that PAGE IMAGE's pixel dimensions:
+- x_pct: left edge  (0.0 = leftmost, 1.0 = rightmost)
+- y_pct: top edge   (0.0 = topmost,  1.0 = bottommost)
+- w_pct: width      (fraction of page width)
+- h_pct: line height (fraction of page height, typically 0.02–0.05)
+
+RULES:
+- Group all occurrences of the same real-world value (e.g. a mayor's name) under ONE variable
+- Include every placement: headers, body text, tables, signature blocks, footers
+- example_value = the exact text as it appears (e.g. "OLGA T. KHO" not "Mayor Olga Kho")
+- Never omit uncertain items — put them in needs_review_candidates
+
+Return ONLY valid JSON (no markdown):
+{
+  "variables": [
+    {
+      "name": "snake_case_key",
+      "label": "2-4 word label",
+      "type": "text|date|number|currency|email|phone|address",
+      "description": "brief description",
+      "example_value": "exact value in document",
+      "is_required": true,
+      "sort_order": 1,
+      "semantic_type": "person_name|org_name|date|currency|reference_number|address|text",
+      "entity_role": "mayor_signatory|recipient|company|date_signed|amount|reference|other",
+      "confidence_score": 0.95,
+      "occurrences": [
+        {
+          "page_number": 1,
+          "original_text": "EXACT TEXT AS SHOWN",
+          "bounding_box": {"x_pct": 0.10, "y_pct": 0.18, "w_pct": 0.40, "h_pct": 0.025},
+          "prefix_text": "HON.",
+          "casing_pattern": "uppercase|titlecase|lowercase|mixed",
+          "source_area": "body|header|footer|table|signature_block",
+          "is_bold": true,
+          "text_align": "L|C|R"
+        }
+      ]
+    }
+  ],
+  "needs_review_candidates": [
+    {"original_text": "uncertain text", "suggested_display_name": "Field Name", "reason": "why uncertain", "confidence": "medium|low"}
+  ]
+}
+PROMPT;
     }
 
     public function extractPdfTextElements(string $pdfPath): array

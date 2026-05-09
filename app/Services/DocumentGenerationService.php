@@ -42,14 +42,24 @@ class DocumentGenerationService
         // Resolve all values using priority order (fixed > user input > default)
         $resolvedValues = $this->resolver->resolve($template, $userValues, $overrides);
 
-        $docType = $doc ? ($doc->isDocx() ? 'docx' : ($doc->isPdf() ? 'pdf' : 'none')) : 'html';
-        \Illuminate\Support\Facades\Log::info('Generation started', [
-            'template_id' => $template->id,
-            'doc_type'    => $docType,
-            'template_docx_path' => $template->template_docx_path,
-            'resolved_keys' => array_keys(array_filter($resolvedValues, fn($v) => $v !== null && $v !== '')),
-            'empty_keys'    => array_keys(array_filter($resolvedValues, fn($v) => $v === null || $v === '')),
-        ]);
+        // For PDF templates: require at least one variable with a valid bounding_box.
+        // If none exist, the document was analyzed with the old approach or analysis
+        // failed — block generation and ask the user to re-analyze.
+        if ($doc && $doc->isPdf()) {
+            $hasAnyPosition = false;
+            foreach ($template->approvedVariables as $var) {
+                if (!empty($var->resolveOverlayPositions())) {
+                    $hasAnyPosition = true;
+                    break;
+                }
+            }
+            if (!$hasAnyPosition && $template->approvedVariables->isNotEmpty()) {
+                throw new \RuntimeException(
+                    'NEEDS_REANALYSIS: This PDF template needs to be re-analyzed before generating. ' .
+                    'Open the template, delete it, and re-upload the PDF to get precise field positions.'
+                );
+            }
+        }
 
         if ($doc && $doc->isDocx()) {
             $generated = $this->generateFromDocx($template, $doc, $resolvedValues);
@@ -195,34 +205,6 @@ class DocumentGenerationService
             $pdf->SetAutoPageBreak(false);
             $pdf->SetMargins(0, 0, 0);
 
-            // Live position fallback: if variables have no stored positions, run pdftohtml
-            // now to find where example_value text appears in the PDF.
-            // This handles templates where position detection failed during AI analysis.
-            $liveElements = [];
-            $needsLiveLookup = false;
-            foreach ($template->approvedVariables as $var) {
-                if (!empty($values[$var->name]) && empty($var->resolveOverlayPositions())) {
-                    $needsLiveLookup = true;
-                    break;
-                }
-            }
-            if ($needsLiveLookup) {
-                $liveElements = $this->detector->extractPdfTextElements($pdfPath);
-            }
-
-            // Build live positions per variable (only for those with no stored positions)
-            $livePositions = [];
-            if (!empty($liveElements)) {
-                foreach ($template->approvedVariables as $var) {
-                    if (!empty($var->example_value) && empty($var->resolveOverlayPositions())) {
-                        $found = $this->detector->findAllTextPositions($liveElements, $var->example_value);
-                        if (!empty($found)) {
-                            $livePositions[$var->name] = $found;
-                        }
-                    }
-                }
-            }
-
             foreach ($images as $idx => $imgPath) {
                 $pageNum = $idx + 1;
 
@@ -242,12 +224,7 @@ class DocumentGenerationService
                         continue;
                     }
 
-                    // Use richer occurrence-based positions when available,
-                    // then legacy text_positions, then live pdftohtml lookup.
                     $positions = $var->resolveOverlayPositions();
-                    if (empty($positions) && isset($livePositions[$var->name])) {
-                        $positions = $livePositions[$var->name];
-                    }
                     if (empty($positions)) {
                         continue;
                     }
@@ -277,9 +254,13 @@ class DocumentGenerationService
                         $fontHeightMm = $fontSize * 25.4 / 72; // points to mm
                         $h = max(min($detectedH, $fontHeightMm * 1.4), $fontHeightMm);
 
-                        // Erase old text (white rect sized to exactly the text line)
+                        // Erase old text — add a small padding around the bbox so
+                        // Vision bbox imprecision (typically ±1-2%) doesn't leave
+                        // original text peeking out around the edges.
+                        $padX = $pageMmW * 0.005; // 0.5% of page width
+                        $padY = $pageMmH * 0.003; // 0.3% of page height
                         $pdf->SetFillColor(255, 255, 255);
-                        $pdf->Rect($x, $y, $w, $h, 'F');
+                        $pdf->Rect($x - $padX, $y - $padY, $w + $padX * 2, $h + $padY * 2, 'F');
 
                         // Resolve text color
                         $hexColor = ltrim($pos['font_color'] ?? '#000000', '#');
