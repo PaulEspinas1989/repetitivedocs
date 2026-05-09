@@ -151,6 +151,7 @@ Route::middleware(['auth', 'workspace'])->group(function () {
     Route::post('/templates/{template}/variables/{variable}/reject',  [TemplateEditorController::class, 'rejectVariable'])->name('templates.variables.reject');
     Route::post('/templates/{template}/variables/{variable}/undo',    [TemplateEditorController::class, 'undoVariable'])->name('templates.variables.undo');
     Route::patch('/templates/{template}/variables/{variable}',        [TemplateEditorController::class, 'updateVariable'])->name('templates.variables.update');
+    Route::post('/templates/{template}/variables/{variable}/merge',   [TemplateEditorController::class, 'mergeVariable'])->name('templates.variables.merge');
 
     // ── Fillable form ─────────────────────────────────────────
     Route::get('/templates/{template}/form',  [FillableFormController::class, 'show'])->name('fillable-form');

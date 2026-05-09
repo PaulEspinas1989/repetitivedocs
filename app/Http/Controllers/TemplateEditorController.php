@@ -180,6 +180,66 @@ class TemplateEditorController extends Controller
         return back()->with('toast', 'Field "' . $variable->label . '" updated.');
     }
 
+    /**
+     * Merge another variable INTO this one.
+     *
+     * The "other" variable's occurrences are reassigned to $variable, then deleted.
+     * This handles the common case where AI detects the same real-world value
+     * twice under different keys (e.g. mayor_name + mayor_full_name).
+     */
+    public function mergeVariable(Request $request, Template $template, TemplateVariable $variable): JsonResponse|RedirectResponse
+    {
+        $this->authorizeWorkspace($template);
+        $this->authorizeVariable($template, $variable);
+
+        $request->validate([
+            'merge_into_id' => ['required', 'integer'],
+        ]);
+
+        $other = TemplateVariable::find($request->merge_into_id);
+
+        if (!$other || (int) $other->template_id !== (int) $template->id) {
+            if (request()->expectsJson()) {
+                return response()->json(['success' => false, 'message' => 'Variable not found.'], 404);
+            }
+            return back()->with('error', 'Variable not found.');
+        }
+
+        if ($other->id === $variable->id) {
+            if (request()->expectsJson()) {
+                return response()->json(['success' => false, 'message' => 'Cannot merge a variable with itself.'], 422);
+            }
+            return back()->with('error', 'Cannot merge a variable with itself.');
+        }
+
+        // Reassign all occurrences from $other → $variable
+        $other->occurrenceRecords()->update(['template_variable_id' => $variable->id]);
+
+        // Merge occurrence counts
+        $variable->increment('occurrences', max(1, (int) $other->occurrences));
+
+        // Keep the higher confidence of the two
+        if ((int) $other->grouping_confidence > (int) $variable->grouping_confidence) {
+            $variable->update(['grouping_confidence' => $other->grouping_confidence]);
+        }
+
+        $otherLabel = $other->label;
+        $other->delete();
+
+        $counts = $this->syncReadiness($template);
+
+        if (request()->expectsJson()) {
+            return response()->json([
+                'success'   => true,
+                'message'   => '"' . $otherLabel . '" merged into "' . $variable->label . '".',
+                'counts'    => $counts,
+                'readiness' => $template->readiness_score,
+            ]);
+        }
+
+        return back()->with('toast', '"' . $otherLabel . '" merged into "' . $variable->label . '".');
+    }
+
     public function approveAll(Template $template): JsonResponse|RedirectResponse
     {
         $this->authorizeWorkspace($template);
@@ -265,7 +325,7 @@ class TemplateEditorController extends Controller
     private function syncReadiness(Template $template): array
     {
         $rows = $template->variables()
-            ->selectRaw('approval_status, COALESCE(needs_review, 0) as nr, count(*) as cnt')
+            ->selectRaw('approval_status, COALESCE(needs_review, false) as nr, count(*) as cnt')
             ->groupBy('approval_status', 'nr')
             ->get();
 

@@ -319,6 +319,62 @@
             </div>
         </form>
 
+        {{-- ── Merge section ────────────────────────────────────────── --}}
+        @php
+            $mergeTargets = $template->variables->where('id', '!=', $var->id)->sortBy('label');
+            $mergeUrl = route('templates.variables.merge', [$template->id, $var->id]);
+        @endphp
+        @if($mergeTargets->isNotEmpty())
+        <div class="pt-4 border-t border-line mb-4"
+             x-data="{ showMerge: false, merging: false, mergeId: '', mergeError: '' }">
+            <button type="button" @click="showMerge = !showMerge"
+                    class="flex items-center gap-1.5 text-xs text-muted hover:text-warning transition-colors">
+                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M8 7h12m0 0-4-4m4 4-4 4m0 6H4m0 0 4 4m-4-4 4-4"/></svg>
+                <span x-text="showMerge ? 'Cancel merge' : 'Merge with another field'"></span>
+            </button>
+
+            <div x-show="showMerge" x-cloak class="mt-3 space-y-2">
+                <p class="text-xs text-muted">
+                    Move all occurrences from another field into <strong>{{ $var->label }}</strong>, then delete the other field.
+                </p>
+                <select x-model="mergeId"
+                        class="w-full px-3 py-2 border border-line rounded-xl text-sm text-navy bg-white focus:outline-none focus:ring-2 focus:ring-warning/20 focus:border-warning transition-colors">
+                    <option value="">— Select field to merge in —</option>
+                    @foreach($mergeTargets as $target)
+                    <option value="{{ $target->id }}">{{ $target->label }} ({{ $target->type }})</option>
+                    @endforeach
+                </select>
+                <p x-show="mergeError" x-text="mergeError" class="text-xs text-danger"></p>
+                <button type="button"
+                        :disabled="!mergeId || merging"
+                        @click="
+                            if (!mergeId) return;
+                            if (!confirm('Merge into \'{{ $var->label }}\'? The selected field will be deleted.')) return;
+                            merging = true; mergeError = '';
+                            fetch(@json($mergeUrl), {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'Accept': 'application/json',
+                                    'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
+                                },
+                                body: JSON.stringify({ merge_into_id: mergeId }),
+                            })
+                            .then(r => r.json())
+                            .then(d => {
+                                if (d.success) { window.location.reload(); }
+                                else { mergeError = d.message || 'Merge failed.'; merging = false; }
+                            })
+                            .catch(() => { mergeError = 'Network error.'; merging = false; })
+                        "
+                        class="w-full flex items-center justify-center gap-1.5 py-2 bg-warning/10 text-warning rounded-xl text-xs font-medium hover:bg-warning/20 transition-colors disabled:opacity-50">
+                    <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M8 7h12m0 0-4-4m4 4-4 4m0 6H4m0 0 4 4m-4-4 4-4"/></svg>
+                    <span x-text="merging ? 'Merging…' : 'Merge selected field in'"></span>
+                </button>
+            </div>
+        </div>
+        @endif
+
         {{-- Value mode section (approved variables only) --}}
         @if($var->approval_status === 'approved')
         <div class="pt-4 border-t border-line">
