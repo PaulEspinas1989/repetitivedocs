@@ -41,6 +41,15 @@ class DocumentGenerationService
         // Resolve all values using priority order (fixed > user input > default)
         $resolvedValues = $this->resolver->resolve($template, $userValues, $overrides);
 
+        $docType = $doc ? ($doc->isDocx() ? 'docx' : ($doc->isPdf() ? 'pdf' : 'none')) : 'html';
+        \Illuminate\Support\Facades\Log::info('Generation started', [
+            'template_id' => $template->id,
+            'doc_type'    => $docType,
+            'template_docx_path' => $template->template_docx_path,
+            'resolved_keys' => array_keys(array_filter($resolvedValues, fn($v) => $v !== null && $v !== '')),
+            'empty_keys'    => array_keys(array_filter($resolvedValues, fn($v) => $v === null || $v === '')),
+        ]);
+
         if ($doc && $doc->isDocx()) {
             $generated = $this->generateFromDocx($template, $doc, $resolvedValues);
         } elseif ($doc && $doc->isPdf()) {
@@ -208,6 +217,12 @@ class DocumentGenerationService
                     // fall back to legacy text_positions JSON
                     $positions = $var->resolveOverlayPositions();
                     if (empty($positions)) {
+                        \Illuminate\Support\Facades\Log::warning('Generation: no positions for var', [
+                            'var_name'        => $var->name,
+                            'has_occurrences' => $var->relationLoaded('activeOccurrences'),
+                            'occurrence_count' => $var->relationLoaded('activeOccurrences') ? $var->activeOccurrences->count() : 'not loaded',
+                            'text_positions'  => !empty($var->text_positions) ? count($var->text_positions) : 0,
+                        ]);
                         continue;
                     }
 
