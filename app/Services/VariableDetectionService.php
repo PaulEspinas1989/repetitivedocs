@@ -398,13 +398,14 @@ class VariableDetectionService
             return $this->analyzeWithText($doc);
         }
 
-        // Step 2: Send extracted text to Claude for variable identification
-        // (text prompt, no images — faster, cheaper, no Vision approximation)
+        // Step 2: Send extracted text to Claude for variable identification.
+        // skipDocumentText=true: pdfplumber already captured the text, so we
+        // don't ask Claude to echo it back in the JSON (saves ~1000+ tokens).
         $response = $this->ai->messages(
             messages: [
                 [
                     'role'    => 'user',
-                    'content' => "Document content:\n\n{$fullText}\n\n" . $this->buildPrompt($doc->template_name),
+                    'content' => "Document content:\n\n{$fullText}\n\n" . $this->buildPrompt($doc->template_name, skipDocumentText: true),
                 ],
             ],
             model:     $this->ai->smartModel(),
