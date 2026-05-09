@@ -322,7 +322,11 @@
         {{-- ── Merge section ────────────────────────────────────────── --}}
         @php
             $mergeTargets = $template->variables->where('id', '!=', $var->id)->sortBy('label');
-            $mergeUrl = route('templates.variables.merge', [$template->id, $var->id]);
+            try {
+                $mergeUrl = route('templates.variables.merge', [$template->id, $var->id]);
+            } catch (\Throwable $e) {
+                $mergeUrl = '';
+            }
         @endphp
         @if($mergeTargets->isNotEmpty())
         <div class="pt-4 border-t border-line mb-4"
