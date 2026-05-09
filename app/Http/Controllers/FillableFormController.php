@@ -114,7 +114,7 @@ class FillableFormController extends Controller
             ]),
             'failed' => response()->json([
                 'error'   => true,
-                'message' => $generated->error_message ?? 'Document generation failed. Please try again.',
+                'message' => $this->cleanErrorMessage($generated->error_message),
             ], 500),
             default => response()->json(['status' => 'processing'], 202),
         };
@@ -131,6 +131,17 @@ class FillableFormController extends Controller
     }
 
     // ── Private helpers ──────────────────────────────────────────────
+
+    private function cleanErrorMessage(?string $raw): string
+    {
+        if (!$raw) {
+            return 'Document generation failed. Please try again.';
+        }
+        if (str_starts_with($raw, 'NEEDS_REANALYSIS:')) {
+            return 'This PDF template needs to be re-analyzed. Please delete it and re-upload the PDF to get precise field positions.';
+        }
+        return $raw;
+    }
 
     private function authorizeWorkspace(Template $template): void
     {
